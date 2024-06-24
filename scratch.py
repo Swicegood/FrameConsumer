@@ -8,6 +8,7 @@ import psycopg2
 from psycopg2 import sql
 import base64
 import os
+import requests
 
 try:
     from openai import OpenAI
@@ -35,6 +36,35 @@ client = OpenAI(base_url=OPENAI_BASE_URL, api_key=OPENAI_API_KEY)
 
 # Initialize Redis client
 redis_client = redis.Redis(host=REDIS_HOST, port=REDIS_PORT)
+
+# URL of an image hosted on the web
+image_url = "https://upload.wikimedia.org/wikipedia/commons/thumb/0/0e/Adelie_penguins_in_the_South_Shetland_Islands.jpg/640px-Adelie_penguins_in_the_South_Shetland_Islands.jpg"
+
+# define the get_base_64_img function (this function is called in the completion)
+def get_base_64_img(image):
+    """
+    Converts an image from either a local file or a URL to base64 encoding.
+
+    Parameters:
+    - image (str): The image source, which can be a local file path or a URL.
+
+    Returns:
+    str: Base64-encoded representation of the image.
+    """
+
+    # Check if the image is a local file or a URL
+    if "http" not in image:
+        # Local File: Read the binary content of the file, encode it in base64, and decode as UTF-8
+        base64_image = base64.b64encode(open(image, "rb").read()).decode('utf-8')
+    else:
+        # File on the Web: Fetch the image content from the URL, encode it in base64, and decode as UTF-8
+        response = requests.get(image)
+        base64_image = base64.b64encode(response.content).decode('utf-8')
+
+    # Return the base64-encoded image
+    return base64_image
+
+# Create completion request (replace the variable image_local with your image)
 
 def initialize_database():
     """Initialize the database connection and create table if not exists."""
@@ -79,7 +109,7 @@ def process_frame(frame_data):
                     {
                         "type": "image_url",
                         "image_url": {
-                            "url": f"data:image/jpeg;base64,{base64_image}"
+                            "url": f"data:image/jpeg;base64,{get_base_64_img(image_url)}"
                         },
                     },
                 ],
@@ -91,8 +121,13 @@ def process_frame(frame_data):
 
     description = ""
     for chunk in completion:
-        if chunk.choices[0].delta.content:
-            print(chunk.choices[0].delta.content, end="", flush=True)
+        logging.info(f"Data retrieved: {chunk}")  # This will show you what data contains right before the error.
+        if chunk.choices is None:
+            logging.error("Data is None, expected a dictionary or list.")
+        else:
+            value = chunk.choices[0]
+            if value.delta.content:
+                print(chunk.choices[0].delta.content, end="", flush=True)
     
     # Placeholder for future confidence extraction
     confidence = 0.0
