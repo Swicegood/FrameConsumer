@@ -25,7 +25,7 @@ REDIS_QUEUE = os.getenv('REDIS_QUEUE', 'frame_queue')
 DB_HOST = os.getenv('DB_HOST', '192.168.0.71')
 DB_NAME = os.getenv('DB_NAME', 'visionmon')
 DB_USER = os.getenv('DB_USER', 'pguser')
-DB_PASSWORD = os.getenv('DB_PASSWORD', 'phare7462g')
+DB_PASSWORD = os.getenv('DB_PASSWORD', 'pgpass')
 
 OPENAI_BASE_URL = os.getenv('OPENAI_BASE_URL', 'http://192.168.0.199:1337/v1')
 OPENAI_API_KEY = os.getenv('OPENAI_API_KEY', 'lm-studio')
@@ -55,50 +55,65 @@ def initialize_database():
 
 def process_frame(frame_data):
     """Process a single frame through the LLM."""
-    # Parse the frame data
-    data = eval(frame_data.decode('utf-8'))  # Decode bytes to string before eval
+    try:
+        # Decode bytes to string before eval, ensure data is safely evaluable
+        data = eval(frame_data.decode('utf-8'))
+    except SyntaxError as e:
+        logging.error(f"Failed to parse frame data: {e}")
+        return None
+
+    # Ensure all necessary data is available
+    if 'camera_id' not in data or 'camera_index' not in data or 'timestamp' not in data or 'frame' not in data:
+        logging.error("Frame data is incomplete.")
+        return None
+
     camera_id = data['camera_id']
     camera_index = data['camera_index']
     timestamp = datetime.fromisoformat(data['timestamp'])
-    
-    # Assume data['frame'] is a base64-encoded PNG image string ready for the LLM
-    base64_image = data['frame']
-    
-    # Run inference
-    completion = client.chat.completions.create(
-        model="not used",
-        messages=[
-            {
-                "role": "system",
-                "content": "This is a chat between a user and an assistant. The assistant is helping the user to describe an image.",
-            },
-            {
-                "role": "user",
-                "content": [
-                    {"type": "text", "text": "What's in this image?"},
-                    {
-                        "type": "image_url",
-                        "image_url": {
-                            "url": f"data:image/jpeg;base64,{base64_image}"
-                        },
-                    },
-                ],
-            }
-        ],
-        max_tokens=1000,
-        stream=True
-    )
+      # Assume data['frame'] is a base64-encoded PNG image string ready for the LLM
+    base64_image = base64.b64encode(data['frame']).decode('utf-8')
 
-    description = ""
-    for chunk in completion:
-        if chunk.choices[0].delta.content:
-            print(chunk.choices[0].delta.content, end="", flush=True)
-    
-    # Placeholder for future confidence extraction
-    confidence = 0.0
-    
-    return camera_id, camera_index, timestamp, description, confidence
-   
+    # Prepare the message payload for the LLM
+    messages = [
+        {
+            "role": "system",
+            "content": "This is a chat between a user and an assistant. The assistant is helping the user to describe an image.",
+        },
+        {
+            "role": "user",
+            "content": [
+                {"type": "text", "text": "What's in this image?"},
+                {
+                    "type": "image_url",
+                    "image_url": {
+                        "url": f"data:image/png;base64,{base64_image}"
+                    },
+                },
+            ],
+        },
+    ]
+
+    # Call the LLM with error handling
+    try:
+        completion = client.chat.completions.create(
+            model="not used",
+            messages=messages,
+            max_tokens=1000,
+            stream=True
+        )
+
+        description = ""
+        for chunk in completion:
+            if chunk.choices and chunk.choices[0].delta and chunk.choices[0].delta.content:
+                description += chunk.choices[0].delta.content
+                print(chunk.choices[0].delta.content, end="", flush=True)
+
+        confidence = 0.0  # Placeholder for future confidence extraction
+        return camera_id, camera_index, timestamp, description, confidence
+
+    except Exception as e:
+        logging.error(f"LLM completion error: {str(e)}")
+        return None
 
 def store_results(conn, camera_id, camera_index, timestamp, description, confidence):
     """Store the results in the database."""
