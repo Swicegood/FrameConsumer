@@ -10,6 +10,7 @@ import base64
 import os
 import asyncio
 import websockets
+import json
 
 try:
     from openai import OpenAI
@@ -56,14 +57,27 @@ async def connect_websocket():
 
 async def send_to_django(message):
     global websocket
-    try:
-        if not websocket:
-            await connect_websocket()
-        await websocket.send(message)
-    except Exception as e:
-        logging.error(f"Error sending message to Django: {str(e)}")
-        websocket = None  # Reset the connection
+    max_retries = 3
+    retry_count = 0
+    
+    while retry_count < max_retries:
+        try:
+            if not websocket:
+                await connect_websocket()
+            await websocket.send(json.dumps({'message': message}))
+            return
+        except websockets.exceptions.ConnectionClosed:
+            logging.error("WebSocket connection closed. Attempting to reconnect...")
+            websocket = None
+            retry_count += 1
+        except Exception as e:
+            logging.error(f"Error sending message to Django: {str(e)}")
+            websocket = None
+            retry_count += 1
+        
         await asyncio.sleep(1)  # Wait before retrying
+    
+    logging.error(f"Failed to send message after {max_retries} attempts")
 
 def initialize_database():
     """Initialize the database connection and create table if not exists."""
@@ -152,6 +166,8 @@ def store_results(conn, camera_id, camera_index, timestamp, description, confide
     )
     conn.commit()
 
+camera_names = { "iY9STaEt7K9vS8yJ": "Temple", "iY9STaEt7K9vS8yK": "Main Entrance", "iY9STaEt7K9vS8yL": "Parking Lot", "iY9STaEt7K9vS8yM": "Backyard"}
+
 async def main():
     conn = initialize_database()
     await connect_websocket()
@@ -163,19 +179,20 @@ async def main():
             
             if frame_data:
                 # Process the frame
-                camera_id, camera_index, timestamp, description, confidence = await process_frame(frame_data[1])
-                # Store the results
-                store_results(conn, camera_id, camera_index, timestamp, description, confidence)
-                logging.info(f"Processed and stored frame from camera {camera_index}")
-                # Send the results to Django via WebSocket
-                await send_to_django(f"{camera_id} {camera_index} {timestamp} {description}")
+                result = await process_frame(frame_data[1])
+                if result:
+                    camera_id, camera_index, timestamp, description, confidence = result
+                    # Store the results
+                    store_results(conn, camera_id, camera_index, timestamp, description, confidence)
+                    logging.info(f"Processed and stored frame from camera {camera_index}")
+                    # Send the results to Django via WebSocket
+                    await send_to_django(f"{camera_names[camera_id]} {camera_index} {timestamp} {description}")
             else:
                 # No frame available, wait a bit before trying again
                 await asyncio.sleep(1)
         except Exception as e:
             logging.error(f"Error in main loop: {str(e)}")
             await asyncio.sleep(5) # Wait a bit before retrying after an error
-
 
 if __name__ == "__main__":
     asyncio.run(main())
