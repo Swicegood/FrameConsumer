@@ -8,6 +8,8 @@ import psycopg2
 from psycopg2 import sql
 import base64
 import os
+import asyncio
+import websockets
 
 try:
     from openai import OpenAI
@@ -30,11 +32,38 @@ DB_PASSWORD = os.getenv('DB_PASSWORD', 'pgpass')
 OPENAI_BASE_URL = os.getenv('OPENAI_BASE_URL', 'http://192.168.0.199:1337/v1')
 OPENAI_API_KEY = os.getenv('OPENAI_API_KEY', 'lm-studio')
 
+DJANGO_WEBSOCKET_URL = os.getenv('DJANGO_WEBSOCKET_URL', 'ws://127.0.0.1:8000/ws/llm_output/')
+
 # Initialize OpenAI client
 client = OpenAI(base_url=OPENAI_BASE_URL, api_key=OPENAI_API_KEY)
 
 # Initialize Redis client
 redis_client = redis.Redis(host=REDIS_HOST, port=REDIS_PORT)
+
+# WebSocket connection
+websocket = None
+
+async def connect_websocket():
+    global websocket
+    while True:
+        try:
+            websocket = await websockets.connect(DJANGO_WEBSOCKET_URL)
+            logging.info("Connected to Django WebSocket")
+            return
+        except Exception as e:
+            logging.error(f"Failed to connect to WebSocket: {str(e)}")
+            await asyncio.sleep(5)
+
+async def send_to_django(message):
+    global websocket
+    try:
+        if not websocket:
+            await connect_websocket()
+        await websocket.send(message)
+    except Exception as e:
+        logging.error(f"Error sending message to Django: {str(e)}")
+        websocket = None  # Reset the connection
+        await asyncio.sleep(1)  # Wait before retrying
 
 def initialize_database():
     """Initialize the database connection and create table if not exists."""
@@ -53,10 +82,9 @@ def initialize_database():
     conn.commit()
     return conn
 
-def process_frame(frame_data):
+async def process_frame(frame_data):
     """Process a single frame through the LLM."""
     try:
-        # Decode bytes to string before eval, ensure data is safely evaluable
         data = eval(frame_data.decode('utf-8'))
     except SyntaxError as e:
         logging.error(f"Failed to parse frame data: {e}")
@@ -66,11 +94,10 @@ def process_frame(frame_data):
     if 'camera_id' not in data or 'camera_index' not in data or 'timestamp' not in data or 'frame' not in data:
         logging.error("Frame data is incomplete.")
         return None
-
     camera_id = data['camera_id']
     camera_index = data['camera_index']
     timestamp = datetime.fromisoformat(data['timestamp'])
-      # Assume data['frame'] is a base64-encoded PNG image string ready for the LLM
+    # Assume data['frame'] is a base64-encoded PNG image string ready for the LLM
     base64_image = base64.b64encode(data['frame']).decode('utf-8')
 
     # Prepare the message payload for the LLM
@@ -115,6 +142,7 @@ def process_frame(frame_data):
         logging.error(f"LLM completion error: {str(e)}")
         return None
 
+
 def store_results(conn, camera_id, camera_index, timestamp, description, confidence):
     """Store the results in the database."""
     cur = conn.cursor()
@@ -124,8 +152,9 @@ def store_results(conn, camera_id, camera_index, timestamp, description, confide
     )
     conn.commit()
 
-def main():
+async def main():
     conn = initialize_database()
+    await connect_websocket()
     
     while True:
         try:
@@ -134,18 +163,19 @@ def main():
             
             if frame_data:
                 # Process the frame
-                camera_id, camera_index, timestamp, description, confidence = process_frame(frame_data[1])
-                
+                camera_id, camera_index, timestamp, description, confidence = await process_frame(frame_data[1])
                 # Store the results
                 store_results(conn, camera_id, camera_index, timestamp, description, confidence)
-                
                 logging.info(f"Processed and stored frame from camera {camera_index}")
+                # Send the results to Django via WebSocket
+                await send_to_django(f"{camera_id} {camera_index} {timestamp} {description}")
             else:
                 # No frame available, wait a bit before trying again
-                time.sleep(1)
+                await asyncio.sleep(1)
         except Exception as e:
             logging.error(f"Error in main loop: {str(e)}")
-            time.sleep(5)  # Wait a bit before retrying after an error
+            await asyncio.sleep(5) # Wait a bit before retrying after an error
+
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())

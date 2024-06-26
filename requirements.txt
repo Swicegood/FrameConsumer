@@ -3,3 +3,5 @@ opencv-python
 numpy
 psycopg2-binary
 openai
+asyncio
+websockets
