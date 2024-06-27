@@ -10,6 +10,7 @@ import os
 import websockets
 import json
 from openai import AsyncOpenAI
+import ast
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -126,11 +127,13 @@ async def send_to_django(message):
             websocket = None
         await asyncio.sleep(1)
 
+
 async def process_frame(frame_data):
     """Process a single frame through the LLM."""
     try:
-        data = json.loads(frame_data.decode('utf-8'))
-    except json.JSONDecodeError as e:
+        # Use ast.literal_eval() instead of json.loads()
+        data = ast.literal_eval(frame_data.decode('utf-8'))
+    except (SyntaxError, ValueError) as e:
         logging.error(f"Failed to parse frame data: {e}")
         return None
 
