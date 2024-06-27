@@ -33,7 +33,7 @@ DB_PASSWORD = os.getenv('DB_PASSWORD', 'pgpass')
 OPENAI_BASE_URL = os.getenv('OPENAI_BASE_URL', 'http://192.168.0.199:1337/v1')
 OPENAI_API_KEY = os.getenv('OPENAI_API_KEY', 'lm-studio')
 
-DJANGO_WEBSOCKET_URL = os.getenv('DJANGO_WEBSOCKET_URL', 'ws://127.0.0.1:8000/ws/llm_output/')
+DJANGO_WEBSOCKET_URL = os.getenv('DJANGO_WEBSOCKET_URL', 'ws://192.168.0.71:8020/ws/llm_output/')
 
 # Initialize OpenAI client
 client = OpenAI(base_url=OPENAI_BASE_URL, api_key=OPENAI_API_KEY)
