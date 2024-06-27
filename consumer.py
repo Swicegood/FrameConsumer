@@ -182,11 +182,11 @@ async def store_results(camera_id, camera_index, timestamp, description, confide
             await asyncio.sleep(5)
 
 camera_names = {
-    "I6Dvhhu1azyV9rCu": "Audio Visual", "oaQllpjP0sk94nCV": "Bhoga Shed", "PxnDZaXu2awYbMmS": "Back Driveway",
-    "mKlJgNx7tXwalch1": "Deck Stairs", "rHWz9GRDFxrOZF7b": "Down Pujari", "LRqgKMMjjJbNEeyE": "Field",
+    "I6Dvhhu1azyV9rCu": "Audio_Visual", "oaQllpjP0sk94nCV": "Bhoga_Shed", "PxnDZaXu2awYbMmS": "Back_Driveway",
+    "mKlJgNx7tXwalch1": "Deck_Stairs", "rHWz9GRDFxrOZF7b": "Down_Pujari", "LRqgKMMjjJbNEeyE": "Field",
     "94uZsJ2yIouIXp2x": "Greenhouse", "5SJZivf8PPsLWw2n": "Hall", "g8rHNVCflWO1ptKN": "Kitchen",
     "t3ZIWTl9jZU1JGEI": "Pavillion", "iY9STaEt7K9vS8yJ": "Prabhupada", "jlNNdFFvhQ2o2kmn": "Stage",
-    "IOKAu7MMacLh79zn": "Temple", "sHlS7ewuGDEd2ef4": "Up Pujari", "OSF13XTCKhpIkyXc": "Walk-in",
+    "IOKAu7MMacLh79zn": "Temple", "sHlS7ewuGDEd2ef4": "Up_Pujari", "OSF13XTCKhpIkyXc": "Walk-in",
     "jLUEC60zHGo7BXfj": "Walkway"
 }
 
