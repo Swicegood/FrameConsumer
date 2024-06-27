@@ -19,7 +19,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Define environment variable
 ENV NAME World
 
-# Note: This container doesn't need to expose any ports as it only makes outgoing connections
+# Set environment variable to force OpenCV to use CPU
+ENV OPENCV_DNN_BACKEND_FORCE_CPU=1
 
 # Run consumer.py when the container launches
 CMD ["python", "consumer.py"]
