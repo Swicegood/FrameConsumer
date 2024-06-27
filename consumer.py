@@ -1,4 +1,5 @@
-import redis
+import asyncio
+import aioredis
 import cv2
 import numpy as np
 import logging
@@ -8,7 +9,6 @@ import psycopg2
 from psycopg2 import sql
 import base64
 import os
-import asyncio
 import websockets
 import json
 
@@ -47,11 +47,10 @@ async def connect_redis():
     global redis_client
     while True:
         try:
-            redis_client = redis.Redis(host=REDIS_HOST, port=REDIS_PORT)
-            await redis_client.ping()
+            redis_client = await aioredis.create_redis_pool(f'redis://{REDIS_HOST}:{REDIS_PORT}')
             logging.info("Connected to Redis")
             return
-        except redis.ConnectionError as e:
+        except Exception as e:
             logging.error(f"Failed to connect to Redis: {str(e)}")
             await asyncio.sleep(5)
 
@@ -201,6 +200,7 @@ async def main():
             if not websocket:
                 await connect_websocket()
 
+            # Use the asynchronous blpop operation
             frame_data = await redis_client.blpop(REDIS_QUEUE, timeout=1)
             
             if frame_data:
