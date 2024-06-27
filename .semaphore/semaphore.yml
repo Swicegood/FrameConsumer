@@ -1,0 +1,25 @@
+version: v1.0
+name: Frameconsumer Pipeline
+agent:
+  machine:
+    type: e1-standard-2
+    os_image: ubuntu2004
+blocks:
+  - name: "Build and Push"
+    task:
+      secrets:
+        - name: dockerhub
+      ß
+      prologue:
+        commands:
+          - echo "${DOCKER_PASSWORD}" | docker login -u "${DOCKER_USERNAME}" --password-stdin
+      
+      jobs:
+        - name: "Build and Push Docker image"
+          commands:
+            - checkout
+            - docker build -t frameconsumer:$SEMAPHORE_WORKFLOW_ID .
+            - docker tag frameconsumer:$SEMAPHORE_WORKFLOW_ID $DOCKER_USERNAME/frameconsumer:$SEMAPHORE_WORKFLOW_ID
+            - docker tag frameconsumer:$SEMAPHORE_WORKFLOW_ID $DOCKER_USERNAME/frameconsumer:latest
+            - docker push $DOCKER_USERNAME/frameconsumer:$SEMAPHORE_WORKFLOW_ID
+            - docker push $DOCKER_USERNAME/frameconsumer:latest
