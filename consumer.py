@@ -38,11 +38,45 @@ DJANGO_WEBSOCKET_URL = os.getenv('DJANGO_WEBSOCKET_URL', 'ws://127.0.0.1:8000/ws
 # Initialize OpenAI client
 client = OpenAI(base_url=OPENAI_BASE_URL, api_key=OPENAI_API_KEY)
 
-# Initialize Redis client
-redis_client = redis.Redis(host=REDIS_HOST, port=REDIS_PORT)
-
-# WebSocket connection
+# Global variables for connections
+redis_client = None
+db_conn = None
 websocket = None
+
+async def connect_redis():
+    global redis_client
+    while True:
+        try:
+            redis_client = redis.Redis(host=REDIS_HOST, port=REDIS_PORT)
+            await redis_client.ping()
+            logging.info("Connected to Redis")
+            return
+        except redis.ConnectionError as e:
+            logging.error(f"Failed to connect to Redis: {str(e)}")
+            await asyncio.sleep(5)
+
+async def connect_database():
+    global db_conn
+    while True:
+        try:
+            db_conn = psycopg2.connect(host=DB_HOST, database=DB_NAME, user=DB_USER, password=DB_PASSWORD)
+            cur = db_conn.cursor()
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS frame_analysis (
+                    id SERIAL PRIMARY KEY,
+                    camera_id VARCHAR(255),
+                    camera_index INTEGER,
+                    timestamp TIMESTAMP,
+                    llm_description TEXT,
+                    confidence FLOAT
+                )
+            """)
+            db_conn.commit()
+            logging.info("Connected to PostgreSQL database")
+            return
+        except psycopg2.Error as e:
+            logging.error(f"Failed to connect to PostgreSQL: {str(e)}")
+            await asyncio.sleep(5)
 
 async def connect_websocket():
     global websocket
@@ -57,10 +91,7 @@ async def connect_websocket():
 
 async def send_to_django(message):
     global websocket
-    max_retries = 3
-    retry_count = 0
-    
-    while retry_count < max_retries:
+    while True:
         try:
             if not websocket:
                 await connect_websocket()
@@ -69,32 +100,10 @@ async def send_to_django(message):
         except websockets.exceptions.ConnectionClosed:
             logging.error("WebSocket connection closed. Attempting to reconnect...")
             websocket = None
-            retry_count += 1
         except Exception as e:
             logging.error(f"Error sending message to Django: {str(e)}")
             websocket = None
-            retry_count += 1
-        
-        await asyncio.sleep(1)  # Wait before retrying
-    
-    logging.error(f"Failed to send message after {max_retries} attempts")
-
-def initialize_database():
-    """Initialize the database connection and create table if not exists."""
-    conn = psycopg2.connect(host=DB_HOST, database=DB_NAME, user=DB_USER, password=DB_PASSWORD)
-    cur = conn.cursor()
-    cur.execute("""
-        CREATE TABLE IF NOT EXISTS frame_analysis (
-            id SERIAL PRIMARY KEY,
-            camera_id VARCHAR(255),
-            camera_index INTEGER,
-            timestamp TIMESTAMP,
-            llm_description TEXT,
-            confidence FLOAT
-        )
-    """)
-    conn.commit()
-    return conn
+        await asyncio.sleep(1)
 
 async def process_frame(frame_data):
     """Process a single frame through the LLM."""
@@ -104,17 +113,15 @@ async def process_frame(frame_data):
         logging.error(f"Failed to parse frame data: {e}")
         return None
 
-    # Ensure all necessary data is available
     if 'camera_id' not in data or 'camera_index' not in data or 'timestamp' not in data or 'frame' not in data:
         logging.error("Frame data is incomplete.")
         return None
+    
     camera_id = data['camera_id']
     camera_index = data['camera_index']
     timestamp = datetime.fromisoformat(data['timestamp'])
-    # Assume data['frame'] is a base64-encoded PNG image string ready for the LLM
     base64_image = base64.b64encode(data['frame']).decode('utf-8')
 
-    # Prepare the message payload for the LLM
     messages = [
         {
             "role": "system",
@@ -134,7 +141,6 @@ async def process_frame(frame_data):
         },
     ]
 
-    # Call the LLM with error handling
     try:
         completion = client.chat.completions.create(
             model="not used",
@@ -156,43 +162,58 @@ async def process_frame(frame_data):
         logging.error(f"LLM completion error: {str(e)}")
         return None
 
-
-def store_results(conn, camera_id, camera_index, timestamp, description, confidence):
+async def store_results(camera_id, camera_index, timestamp, description, confidence):
     """Store the results in the database."""
-    cur = conn.cursor()
-    cur.execute(
-        sql.SQL("INSERT INTO frame_analysis (camera_id, camera_index, timestamp, llm_description, confidence) VALUES (%s, %s, %s, %s, %s)"),
-        (camera_id, camera_index, timestamp, description, confidence)
-    )
-    conn.commit()
-
-camera_names = { "iY9STaEt7K9vS8yJ": "Temple", "iY9STaEt7K9vS8yK": "Main Entrance", "iY9STaEt7K9vS8yL": "Parking Lot", "iY9STaEt7K9vS8yM": "Backyard"}
-
-async def main():
-    conn = initialize_database()
-    await connect_websocket()
-    
+    global db_conn
     while True:
         try:
-            # Try to get a frame from the Redis queue
-            frame_data = redis_client.blpop(REDIS_QUEUE, timeout=1)
+            if not db_conn or db_conn.closed:
+                await connect_database()
+            cur = db_conn.cursor()
+            cur.execute(
+                sql.SQL("INSERT INTO frame_analysis (camera_id, camera_index, timestamp, llm_description, confidence) VALUES (%s, %s, %s, %s, %s)"),
+                (camera_id, camera_index, timestamp, description, confidence)
+            )
+            db_conn.commit()
+            logging.info(f"Stored results for camera {camera_index}")
+            return
+        except psycopg2.Error as e:
+            logging.error(f"Database error: {str(e)}")
+            db_conn = None
+            await asyncio.sleep(5)
+
+camera_names = {
+    "I6Dvhhu1azyV9rCu": "Audio Visual", "oaQllpjP0sk94nCV": "Bhoga Shed", "PxnDZaXu2awYbMmS": "Back Driveway",
+    "mKlJgNx7tXwalch1": "Deck Stairs", "rHWz9GRDFxrOZF7b": "Down Pujari", "LRqgKMMjjJbNEeyE": "Field",
+    "94uZsJ2yIouIXp2x": "Greenhouse", "5SJZivf8PPsLWw2n": "Hall", "g8rHNVCflWO1ptKN": "Kitchen",
+    "t3ZIWTl9jZU1JGEI": "Pavillion", "iY9STaEt7K9vS8yJ": "Prabhupada", "jlNNdFFvhQ2o2kmn": "Stage",
+    "IOKAu7MMacLh79zn": "Temple", "sHlS7ewuGDEd2ef4": "Up Pujari", "OSF13XTCKhpIkyXc": "Walk-in",
+    "jLUEC60zHGo7BXfj": "Walkway"
+}
+
+async def main():
+    while True:
+        try:
+            if not redis_client:
+                await connect_redis()
+            if not db_conn or db_conn.closed:
+                await connect_database()
+            if not websocket:
+                await connect_websocket()
+
+            frame_data = await redis_client.blpop(REDIS_QUEUE, timeout=1)
             
             if frame_data:
-                # Process the frame
                 result = await process_frame(frame_data[1])
                 if result:
                     camera_id, camera_index, timestamp, description, confidence = result
-                    # Store the results
-                    store_results(conn, camera_id, camera_index, timestamp, description, confidence)
-                    logging.info(f"Processed and stored frame from camera {camera_index}")
-                    # Send the results to Django via WebSocket
-                    await send_to_django(f"{camera_names[camera_id]} {camera_index} {timestamp} {description}")
+                    await store_results(camera_id, camera_index, timestamp, description, confidence)
+                    await send_to_django(f"{camera_names.get(camera_id, 'Unknown')} {camera_index} {timestamp} {description}")
             else:
-                # No frame available, wait a bit before trying again
                 await asyncio.sleep(1)
         except Exception as e:
             logging.error(f"Error in main loop: {str(e)}")
-            await asyncio.sleep(5) # Wait a bit before retrying after an error
+            await asyncio.sleep(5)
 
 if __name__ == "__main__":
     asyncio.run(main())
