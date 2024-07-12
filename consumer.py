@@ -61,7 +61,7 @@ camera_descriptions = {
     "Prabhupada": "The main hall of the temple, typically used for kirtans, classes, or gatherings. May be occupied by visitors or devotees. There is a statue of Srila Prabhupada in this area.",
     "Stage": "The stage area, typically used for performances, kirtans, or classes, and prasadam distribution. May be occupied by visitors or devotees.",
     "Temple": "The main hall of the temple, typically used for kirtans, classes, or gatherings. May be occupied by visitors or devotees.",
-    "Up_Pujari": "[Placeholder: Describe the Up_Pujari area, its purpose, and what's normally visible]",
+    "Up_Pujari": "The upstairs area where pujaris prepare dresses for the deities, typically only occupied by pujaris.",
     "Walk-in": "Cold storage area on backside of the temple for perishable items, typically only occupied by kitchen staff or pujaris.",
     "Walkway": "The walkway leading to the temple, typically used by visitors or devotees."
 }
@@ -83,23 +83,60 @@ async def connect_database():
         try:
             db_conn = psycopg2.connect(host=DB_HOST, database=DB_NAME, user=DB_USER, password=DB_PASSWORD)
             cur = db_conn.cursor()
+            
+            # Create binary_data table
             cur.execute("""
-                CREATE TABLE IF NOT EXISTS frame_analysis (
+                CREATE TABLE IF NOT EXISTS visionmon_binary_data (
                     id SERIAL PRIMARY KEY,
+                    data BYTEA NOT NULL
+                )
+            """)
+            
+            # Create metadata table
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS visionmon_metadata (
+                    id SERIAL PRIMARY KEY,
+                    data_id INTEGER NOT NULL,
                     camera_id VARCHAR(255),
                     camera_index INTEGER,
                     timestamp TIMESTAMP,
-                    llm_description TEXT,
+                    description TEXT,
                     confidence FLOAT
                 )
             """)
+            
+            # Add foreign key constraint if it doesn't exist
+            cur.execute("""
+                DO $$
+                BEGIN
+                    IF NOT EXISTS (
+                        SELECT 1 FROM information_schema.table_constraints 
+                        WHERE constraint_name = 'fk_binary_data' AND table_name = 'visionmon_metadata'
+                    ) THEN
+                        ALTER TABLE visionmon_metadata
+                        ADD CONSTRAINT fk_binary_data
+                        FOREIGN KEY (data_id)
+                        REFERENCES visionmon_binary_data (id)
+                        ON DELETE CASCADE;
+                    END IF;
+                END $$;
+            """)
+            
+            # Create index on data_id if it doesn't exist
+            cur.execute("""
+                CREATE INDEX IF NOT EXISTS idx_metadata_data_id ON visionmon_metadata(data_id);
+            """)
+            
+            # Commit the changes
             db_conn.commit()
-            logging.info("Connected to PostgreSQL database")
+            
+            logging.info("Connected to PostgreSQL database and ensured schema is up to date")
             return
         except psycopg2.Error as e:
-            logging.error(f"Failed to connect to PostgreSQL: {str(e)}")
+            logging.error(f"Failed to connect to PostgreSQL or set up schema: {str(e)}")
+            if db_conn:
+                db_conn.close()
             await asyncio.sleep(5)
-
 async def connect_websocket():
     global websocket
     while True:
@@ -131,7 +168,6 @@ async def send_to_django(message):
 async def process_frame(frame_data):
     """Process a single frame through the LLM."""
     try:
-        # Use ast.literal_eval() instead of json.loads()
         data = ast.literal_eval(frame_data.decode('utf-8'))
     except (SyntaxError, ValueError) as e:
         logging.error(f"Failed to parse frame data: {e}")
@@ -144,40 +180,24 @@ async def process_frame(frame_data):
     camera_id = data['camera_id']
     camera_index = data['camera_index']
     timestamp = datetime.fromisoformat(data['timestamp'])
-    base64_image = base64.b64encode(data['frame']).decode('utf-8')
+    image_data = data['frame']  # This should be the binary image data
+    base64_image = base64.b64encode(image_data).decode('utf-8')
 
     camera_name = camera_names.get(camera_id, "Unknown")
     camera_description = camera_descriptions.get(camera_name, "No specific description available.")
 
-    messages = [
+    messages=[
+    {
+      "role": "system",
+      "content": "This is a chat between a user and an assistant. The assistant is helping the user to describe an image.",
+    },
+    {
+      "role": "user",
+      "content": [
+        {"type": "text", "text": "What’s in this image?"},
         {
-            "role": "system",
-            "content": f"You are analyzing real-time footage from a security camera installed at {camera_name}. {camera_description} Your task is to vigilantly monitor for any unusual or potentially hazardous activities that could signify a security threat, safety issue, or require immediate attention.",
-        },
-        {
-            "role": "user",
-            "content": [
-                {"type": "text", "text": 
-                    """Instructions: Examine the provided image carefully. Describe any unusual activities, focusing on details such as:
-
-    • Unidentified individuals or unauthorized access, especially during off-hours.
-    • Signs of forced entry such as broken windows or doors.
-    • Vehicles that are in restricted areas or moving in an unusual pattern.
-    • Suspicious behavior such as loitering near sensitive areas, unusual gatherings, or individuals carrying suspicious items.
-    • Safety hazards including signs of fire (smoke, flames), flooding, or significant obstructions that could pose risks to safety.
-
-Your response should prioritize immediate actionable insights that can assist security personnel in assessing and responding to the situation promptly. Provide specific descriptions, including the location within the scene (e.g., 'near the north exit'), the appearance of individuals or objects, and any actions they are taking that are noteworthy.
-
-Response Format: Deliver your analysis as a concise report, suitable for immediate review by security personnel, formatted as follows:
-
-    • Alert Type: [Type of alert, e.g., Unauthorized Access, Safety Hazard]
-    • Details: [Detailed description of the situation]
-    • Location Specifics: [Exact location or noticeable landmarks in the image]
-    • Recommended Action: [Suggest a specific action based on the observation, e.g., 'Notify security to approach the north exit', 'Review further to confirm identity', etc.]"""
-                },
-                {
-                    "type": "image_url",
-                    "image_url": {
+          "type": "image_url",
+          "image_url": {
                         "url": f"data:image/png;base64,{base64_image}"
                     },
                 },
@@ -200,32 +220,50 @@ Response Format: Deliver your analysis as a concise report, suitable for immedia
                 print(chunk.choices[0].delta.content, end="", flush=True)
 
         confidence = 0.0  # Placeholder for future confidence extraction
-        return camera_id, camera_index, timestamp, description, confidence
+        return camera_id, camera_index, timestamp, description, confidence, image_data
 
     except Exception as e:
         logging.error(f"LLM completion error: {str(e)}")
         return None
 
-async def store_results(camera_id, camera_index, timestamp, description, confidence):
-    """Store the results in the database."""
+async def store_results(camera_id, camera_index, timestamp, description, confidence, image_data):
+    """Store the results and image data in the database."""
     global db_conn
     while True:
         try:
             if not db_conn or db_conn.closed:
                 await connect_database()
+            
             cur = db_conn.cursor()
+            
+            # Start transaction
+            cur.execute("BEGIN;")
+            
+            # Insert binary data
             cur.execute(
-                sql.SQL("INSERT INTO frame_analysis (camera_id, camera_index, timestamp, llm_description, confidence) VALUES (%s, %s, %s, %s, %s)"),
-                (camera_id, camera_index, timestamp, description, confidence)
+                "INSERT INTO visionmon_binary_data (data) VALUES (%s) RETURNING id;",
+                (psycopg2.Binary(image_data),)
             )
-            db_conn.commit()
-            logging.info(f"Stored results for camera {camera_index}")
+            binary_data_id = cur.fetchone()[0]
+            
+            # Insert metadata
+            cur.execute(
+                """INSERT INTO visionmon_metadata 
+                   (data_id, camera_id, camera_index, timestamp, description, confidence) 
+                   VALUES (%s, %s, %s, %s, %s, %s);""",
+                (binary_data_id, camera_id, camera_index, timestamp, description, confidence)
+            )
+            
+            # Commit transaction
+            cur.execute("COMMIT;")
+            
+            logging.info(f"Stored results and image for camera {camera_index}")
             return
         except psycopg2.Error as e:
             logging.error(f"Database error: {str(e)}")
+            cur.execute("ROLLBACK;")
             db_conn = None
             await asyncio.sleep(5)
-
 async def main():
     while True:
         try:
@@ -241,8 +279,8 @@ async def main():
             if frame_data:
                 result = await process_frame(frame_data[1])
                 if result:
-                    camera_id, camera_index, timestamp, description, confidence = result
-                    await store_results(camera_id, camera_index, timestamp, description, confidence)
+                    camera_id, camera_index, timestamp, description, confidence, image_data = result
+                    await store_results(camera_id, camera_index, timestamp, description, confidence, image_data)
                     camera_name = camera_names.get(camera_id, 'Unknown')
                     await send_to_django(f"{camera_name} {camera_index} {timestamp} {description}")
             else:
