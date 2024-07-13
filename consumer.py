@@ -281,7 +281,7 @@ async def process_state():
         
         cur = db_conn.cursor()
         
-        # Fetch the latest descriptions for all cameras
+        # Fetch the latest descriptions for all cameras (for facility state)
         cur.execute("""
             SELECT camera_id, description
             FROM visionmon_metadata
@@ -293,12 +293,21 @@ async def process_state():
         """)
         latest_descriptions = dict(cur.fetchall())
         
+        # Fetch aggregated descriptions from last hour for each camera (for camera states)
+        cur.execute("""
+            SELECT camera_id, STRING_AGG(description, ' ') as descriptions
+            FROM visionmon_metadata
+            WHERE timestamp >= NOW() - INTERVAL '1 hour'
+            GROUP BY camera_id
+        """)
+        hourly_aggregated_descriptions = dict(cur.fetchall())
+        
         # Process overall facility state
-        all_descriptions = " ".join(latest_descriptions.values())
-        facility_state = await process_facility_state(all_descriptions)
+        all_recent_descriptions = " ".join(latest_descriptions.values())
+        facility_state = await process_facility_state(all_recent_descriptions)
         
         # Process individual camera states
-        camera_states = await process_camera_states(latest_descriptions)
+        camera_states = await process_camera_states(hourly_aggregated_descriptions)
         
         # Send results to Redis for Django to pick up
         state_result = json.dumps({
@@ -309,42 +318,63 @@ async def process_state():
         
     except Exception as e:
         logging.error(f"Error processing state: {str(e)}")
+        
+async def process_facility_state(all_recent_descriptions):
+    prompt = f"""Please analyze the following most recent descriptions from all cameras in the facility and determine the overall current state of the facility. 
+    Output one or more of the following states: "busy", "off-hours", "festival happening", "night-time", "quiet" or "meal time". 
+    Please output only those words.
 
-async def process_facility_state(all_descriptions):
-    prompt = f"""Please read all the following descriptions of different parts of a facility and decide the state of the facility. Output one or more of the following: "busy", "off-hours", "festival happening", "night-time", "quiet" or "meal time". Please output only those words and give your justification for choosing each.
-
-Descriptions: {all_descriptions}"""
+Most Recent Descriptions from all cameras: {all_recent_descriptions}"""
 
     try:
-        response = await client.chat.completions.create(
+        completion = await client.chat.completions.create(
             model="not used",
             messages=[
-                {"role": "system", "content": "You are an AI tasked with determining the overall state of a facility based on security camera descriptions."},
+                {"role": "system", "content": "You are an AI tasked with determining the overall current state of a facility based on the most recent security camera descriptions from all areas."},
                 {"role": "user", "content": prompt}
             ],
-            max_tokens=200
+            max_tokens=1000,
+            stream=True
         )
-        return response.choices[0].message.content
+  
+        description = ""
+        async for chunk in completion:
+            if chunk.choices and chunk.choices[0].delta and chunk.choices[0].delta.content:
+                description += chunk.choices[0].delta.content
+                print(chunk.choices[0].delta.content, end="", flush=True)
+                
+        return description
+    
     except Exception as e:
         return f"Error processing facility state: {str(e)}"
-
-async def process_camera_states(latest_descriptions):
+    
+async def process_camera_states(hourly_aggregated_descriptions):
     camera_states = {}
-    for camera_id, description in latest_descriptions.items():
-        prompt = f"""Please read the following description of a camera's view and decide the state of this part of the facility. Output one or more of the following: "busy", "off-hours", "festival happening", "night-time", "quiet" or "meal time". Please output only those words and give your justification for choosing each.
+    for camera_id, aggregated_description in hourly_aggregated_descriptions.items():
+        prompt = f"""Please analyze the following aggregated descriptions from the last hour for a single camera and determine the state of this specific area of the facility. 
+        Output one or more of the following states: "busy", "off-hours", "festival happening", "night-time", "quiet" or "meal time". 
+        Please output only those words and provide a brief justification for each chosen state based on the trends and patterns observed in the last hour for this specific camera.
 
-Description: {description}"""
+Aggregated Descriptions from the last hour for camera {camera_id}: {aggregated_description}"""
 
         try:
-            response = await client.chat.completions.create(
+            completion = await client.chat.completions.create(
                 model="not used",
                 messages=[
-                    {"role": "system", "content": "You are an AI tasked with determining the state of a specific area in a facility based on a security camera description."},
+                    {"role": "system", "content": "You are an AI tasked with determining the state of a specific area in a facility based on aggregated security camera descriptions from the last hour."},
                     {"role": "user", "content": prompt}
                 ],
-                max_tokens=200
+                max_tokens=200,
+                stream=True
             )
-            camera_states[camera_id] = response.choices[0].message.content
+            description = ""
+            async for chunk in completion:
+                if chunk.choices and chunk.choices[0].delta and chunk.choices[0].delta.content:
+                    description += chunk.choices[0].delta.content
+                    print(chunk.choices[0].delta.content, end="", flush=True)
+            
+            
+            camera_states[camera_id] = completion
         except Exception as e:
             camera_states[camera_id] = f"Error processing camera state: {str(e)}"
     
