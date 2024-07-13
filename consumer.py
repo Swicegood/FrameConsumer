@@ -12,6 +12,13 @@ import json
 from openai import AsyncOpenAI
 import ast
 
+# ... (keep existing imports and configurations)
+
+# Add new Redis channels for signaling
+REDIS_CAMERA_CHANNEL = 'camera_processing'
+REDIS_STATE_CHANNEL = 'state_processing'
+REDIS_STATE_RESULT_CHANNEL = 'state_result'
+
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
@@ -264,7 +271,91 @@ async def store_results(camera_id, camera_index, timestamp, description, confide
             cur.execute("ROLLBACK;")
             db_conn = None
             await asyncio.sleep(5)
+
+async def process_state():
+    """Process the overall state and individual camera states."""
+    global db_conn
+    try:
+        if not db_conn or db_conn.closed:
+            await connect_database()
+        
+        cur = db_conn.cursor()
+        
+        # Fetch the latest descriptions for all cameras
+        cur.execute("""
+            SELECT camera_id, description
+            FROM visionmon_metadata
+            WHERE (camera_id, timestamp) IN (
+                SELECT camera_id, MAX(timestamp)
+                FROM visionmon_metadata
+                GROUP BY camera_id
+            )
+        """)
+        latest_descriptions = dict(cur.fetchall())
+        
+        # Process overall facility state
+        all_descriptions = " ".join(latest_descriptions.values())
+        facility_state = await process_facility_state(all_descriptions)
+        
+        # Process individual camera states
+        camera_states = await process_camera_states(latest_descriptions)
+        
+        # Send results to Redis for Django to pick up
+        state_result = json.dumps({
+            'facility_state': facility_state,
+            'camera_states': camera_states
+        })
+        await redis_client.publish(REDIS_STATE_RESULT_CHANNEL, state_result)
+        
+    except Exception as e:
+        logging.error(f"Error processing state: {str(e)}")
+
+async def process_facility_state(all_descriptions):
+    prompt = f"""Please read all the following descriptions of different parts of a facility and decide the state of the facility. Output one or more of the following: "busy", "off-hours", "festival happening", "night-time", "quiet" or "meal time". Please output only those words and give your justification for choosing each.
+
+Descriptions: {all_descriptions}"""
+
+    try:
+        response = await client.chat.completions.create(
+            model="not used",
+            messages=[
+                {"role": "system", "content": "You are an AI tasked with determining the overall state of a facility based on security camera descriptions."},
+                {"role": "user", "content": prompt}
+            ],
+            max_tokens=200
+        )
+        return response.choices[0].message.content
+    except Exception as e:
+        return f"Error processing facility state: {str(e)}"
+
+async def process_camera_states(latest_descriptions):
+    camera_states = {}
+    for camera_id, description in latest_descriptions.items():
+        prompt = f"""Please read the following description of a camera's view and decide the state of this part of the facility. Output one or more of the following: "busy", "off-hours", "festival happening", "night-time", "quiet" or "meal time". Please output only those words and give your justification for choosing each.
+
+Description: {description}"""
+
+        try:
+            response = await client.chat.completions.create(
+                model="not used",
+                messages=[
+                    {"role": "system", "content": "You are an AI tasked with determining the state of a specific area in a facility based on a security camera description."},
+                    {"role": "user", "content": prompt}
+                ],
+                max_tokens=200
+            )
+            camera_states[camera_id] = response.choices[0].message.content
+        except Exception as e:
+            camera_states[camera_id] = f"Error processing camera state: {str(e)}"
+    
+    return camera_states
+
 async def main():
+    global redis_client
+    camera_count = 0
+    state_processing_interval = 60  # Process state every 60 seconds
+    last_state_processing = 0
+
     while True:
         try:
             if not redis_client:
@@ -274,6 +365,7 @@ async def main():
             if not websocket:
                 await connect_websocket()
 
+            # Check for frame in the queue
             frame_data = await redis_client.blpop(REDIS_QUEUE, timeout=1)
             
             if frame_data:
@@ -283,8 +375,22 @@ async def main():
                     await store_results(camera_id, camera_index, timestamp, description, confidence, image_data)
                     camera_name = camera_names.get(camera_id, 'Unknown')
                     await send_to_django(f"{camera_name} {camera_index} {timestamp} {description}")
-            else:
-                await asyncio.sleep(1)
+                    
+                    camera_count += 1
+                    if camera_count >= len(camera_names):
+                        # All cameras processed, check if it's time to process state
+                        current_time = time.time()
+                        if current_time - last_state_processing >= state_processing_interval:
+                            await process_state()
+                            last_state_processing = current_time
+                        camera_count = 0
+
+            # Check for state processing request from Django
+            state_request = await redis_client.blpop(REDIS_STATE_CHANNEL, timeout=1)
+            if state_request:
+                await process_state()
+
+            await asyncio.sleep(0.1)  # Short sleep to prevent CPU overuse
         except Exception as e:
             logging.error(f"Error in main loop: {str(e)}")
             await asyncio.sleep(5)
