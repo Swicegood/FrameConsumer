@@ -35,7 +35,7 @@ DB_PASSWORD = os.getenv('DB_PASSWORD', 'pgpass')
 OPENAI_BASE_URL = os.getenv('OPENAI_BASE_URL', 'http://192.168.0.199:1337/v1')
 OPENAI_API_KEY = os.getenv('OPENAI_API_KEY', 'lm-studio')
 
-DJANGO_WEBSOCKET_URL = os.getenv('DJANGO_WEBSOCKET_URL', 'ws://192.168.0.71:8020/ws/llm_output/')
+DJANGO_WEBSOCKET_URL = os.getenv('DJANGO_WEBSOCKET_URL', 'ws://localhost:8001/ws/llm_output/')
 
 # Initialize OpenAI client
 client = AsyncOpenAI(base_url=OPENAI_BASE_URL, api_key=OPENAI_API_KEY)
@@ -53,6 +53,8 @@ camera_names = {
     "IOKAu7MMacLh79zn": "Temple", "sHlS7ewuGDEd2ef4": "Up_Pujari", "OSF13XTCKhpIkyXc": "Walk-in",
     "jLUEC60zHGo7BXfj": "Walkway"
 }
+
+camera_indexes = {'I6Dvhhu1azyV9rCu': 1, 'oaQllpjP0sk94nCV': 3, 'PxnDZaXu2awYbMmS': 2, 'mKlJgNx7tXwalch1': 4, 'rHWz9GRDFxrOZF7b': 5, 'LRqgKMMjjJbNEeyE': 6, '94uZsJ2yIouIXp2x': 7, '5SJZivf8PPsLWw2n': 8, 'g8rHNVCflWO1ptKN': 9, 't3ZIWTl9jZU1JGEI': 10, 'iY9STaEt7K9vS8yJ': 11, 'jlNNdFFvhQ2o2kmn': 12, 'IOKAu7MMacLh79zn': 13, 'sHlS7ewuGDEd2ef4': 14, 'OSF13XTCKhpIkyXc': 15, 'jLUEC60zHGo7BXfj': 16}
 
 camera_descriptions = {
     "Audio_Visual": "A server room/AV/alter prep area typically used for getting alter itmes and adjusting volume or equipment.",
@@ -216,7 +218,7 @@ async def process_frame(frame_data):
         completion = await client.chat.completions.create(
             model="not used",
             messages=messages,
-            max_tokens=1000,
+            max_tokens=500,
             stream=True
         )
 
@@ -271,6 +273,9 @@ async def store_results(camera_id, camera_index, timestamp, description, confide
             cur.execute("ROLLBACK;")
             db_conn = None
             await asyncio.sleep(5)
+import json
+import logging
+from openai import AsyncStream
 
 async def process_state():
     """Process the overall state and individual camera states."""
@@ -304,10 +309,12 @@ async def process_state():
         
         # Process overall facility state
         all_recent_descriptions = " ".join(latest_descriptions.values())
-        facility_state = await process_facility_state(all_recent_descriptions)
+        facility_state_stream = await process_facility_state(all_recent_descriptions)
+        facility_state = await extract_content(facility_state_stream)
         
         # Process individual camera states
-        camera_states = await process_camera_states(hourly_aggregated_descriptions)
+        camera_states_stream = await process_camera_states(hourly_aggregated_descriptions)
+        camera_states = await extract_content(camera_states_stream)
         
         # Send results to Redis for Django to pick up
         state_result = json.dumps({
@@ -315,9 +322,21 @@ async def process_state():
             'camera_states': camera_states
         })
         await redis_client.publish(REDIS_STATE_RESULT_CHANNEL, state_result)
+        print(f"Facility State: {facility_state}")
+        print(f"Camera States: {camera_states}")
         
     except Exception as e:
         logging.error(f"Error processing state: {str(e)}")
+
+async def extract_content(stream):
+    """Extract content from AsyncStream object."""
+    if isinstance(stream, AsyncStream):
+        content = ""
+        async for chunk in stream:
+            if chunk.choices and chunk.choices[0].delta and chunk.choices[0].delta.content:
+                content += chunk.choices[0].delta.content
+        return content
+    return stream  # If it's not an AsyncStream, return as is
         
 async def process_facility_state(all_recent_descriptions):
     prompt = f"""Please analyze the following most recent descriptions from all cameras in the facility and determine the overall current state of the facility. 
@@ -333,17 +352,10 @@ Most Recent Descriptions from all cameras: {all_recent_descriptions}"""
                 {"role": "system", "content": "You are an AI tasked with determining the overall current state of a facility based on the most recent security camera descriptions from all areas."},
                 {"role": "user", "content": prompt}
             ],
-            max_tokens=1000,
-            stream=True
+            max_tokens=20,
         )
-  
-        description = ""
-        async for chunk in completion:
-            if chunk.choices and chunk.choices[0].delta and chunk.choices[0].delta.content:
-                description += chunk.choices[0].delta.content
-                print(chunk.choices[0].delta.content, end="", flush=True)
                 
-        return description
+        return completion.choices[0].message.content
     
     except Exception as e:
         return f"Error processing facility state: {str(e)}"
@@ -353,7 +365,7 @@ async def process_camera_states(hourly_aggregated_descriptions):
     for camera_id, aggregated_description in hourly_aggregated_descriptions.items():
         prompt = f"""Please analyze the following aggregated descriptions from the last hour for a single camera and determine the state of this specific area of the facility. 
         Output one or more of the following states: "busy", "off-hours", "festival happening", "night-time", "quiet" or "meal time". 
-        Please output only those words and provide a brief justification for each chosen state based on the trends and patterns observed in the last hour for this specific camera.
+        Please output only those words and no more.
 
 Aggregated Descriptions from the last hour for camera {camera_id}: {aggregated_description}"""
 
@@ -364,19 +376,12 @@ Aggregated Descriptions from the last hour for camera {camera_id}: {aggregated_d
                     {"role": "system", "content": "You are an AI tasked with determining the state of a specific area in a facility based on aggregated security camera descriptions from the last hour."},
                     {"role": "user", "content": prompt}
                 ],
-                max_tokens=200,
-                stream=True
+                max_tokens=20,
             )
-            description = ""
-            async for chunk in completion:
-                if chunk.choices and chunk.choices[0].delta and chunk.choices[0].delta.content:
-                    description += chunk.choices[0].delta.content
-                    print(chunk.choices[0].delta.content, end="", flush=True)
-            
-            
-            camera_states[camera_id] = completion
+
+            camera_states[camera_names[camera_id]+' '+str(camera_indexes[camera_id])] = completion.choices[0].message.content
         except Exception as e:
-            camera_states[camera_id] = f"Error processing camera state: {str(e)}"
+            camera_states[camera_names[camera_id]+' '+str(camera_indexes[camera_id])] = f"Error processing camera state: {str(e)}"
     
     return camera_states
 
@@ -407,7 +412,7 @@ async def main():
                     await send_to_django(f"{camera_name} {camera_index} {timestamp} {description}")
                     
                     camera_count += 1
-                    if camera_count >= len(camera_names):
+                    if camera_count >= len(camera_names) or camera_count == 1:
                         # All cameras processed, check if it's time to process state
                         current_time = time.time()
                         if current_time - last_state_processing >= state_processing_interval:
