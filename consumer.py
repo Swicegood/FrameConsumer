@@ -352,7 +352,7 @@ Most Recent Descriptions from all cameras: {all_recent_descriptions}"""
                 {"role": "system", "content": "You are an AI tasked with determining the overall current state of a facility based on the most recent security camera descriptions from all areas."},
                 {"role": "user", "content": prompt}
             ],
-            max_tokens=20,
+            max_tokens=100,
         )
                 
         return completion.choices[0].message.content
