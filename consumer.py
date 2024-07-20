@@ -339,9 +339,7 @@ async def extract_content(stream):
     return stream  # If it's not an AsyncStream, return as is
         
 async def process_facility_state(all_recent_descriptions):
-    prompt = f"""Please analyze the following most recent descriptions from all cameras in the facility and determine the overall current state of the facility. 
-    Output one or more of the following states: "busy", "off-hours", "festival happening", "night-time", "quiet" or "meal time". 
-    Please output only those words.
+    prompt = f"""Please analyze the following most recent descriptions from all cameras in the facility and determine the overall current state of the facility. Note "busy" means a lot of activity right now, "festival happening" means special pageantry taking place, "crowd gathering" means people are gathering, "night-time" means it is dark, "quiet" means not much activity, "person present" means an individual is there, and "people eating" means people are consuming food. Output one or more of the following states: "busy", "festival happening", "crowd gathering", "night-time", "quiet", "person present" or "people eating". Please output only those words and nothing else.
 
 Most Recent Descriptions from all cameras: {all_recent_descriptions}"""
 
@@ -363,9 +361,8 @@ Most Recent Descriptions from all cameras: {all_recent_descriptions}"""
 async def process_camera_states(hourly_aggregated_descriptions):
     camera_states = {}
     for camera_id, aggregated_description in hourly_aggregated_descriptions.items():
-        prompt = f"""Please analyze the following aggregated descriptions from the last hour for a single camera and determine the state of this specific area of the facility. 
-        Output one or more of the following states: "busy", "off-hours", "festival happening", "night-time", "quiet" or "meal time". 
-        Please output only those words and no more.
+        prompt = f"""Please analyze the following aggregated descriptions from the last hour for a single camera and determine the state of this specific area of the facility. Note "busy" means a lot of activity right now, "festival happening" means special pageantry taking place, "crowd gathering" means people are gathering, "night-time" means it is dark, "quiet" means not much activity, "person present" means an individual is there, and "people eating" means people are consuming food.
+        Output one or more of the following states: "busy", "festival happening", "crowd gathering", "night-time", "quiet", "person present" or "people eating". Please output only those words and nothing else.
 
 Aggregated Descriptions from the last hour for camera {camera_id}: {aggregated_description}"""
 
