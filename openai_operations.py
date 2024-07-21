@@ -31,16 +31,9 @@ async def process_image(base64_image):
             model="not used",
             messages=messages,
             max_tokens=500,
-            stream=True
         )
 
-        description = ""
-        async for chunk in completion:
-            if chunk.choices and chunk.choices[0].delta and chunk.choices[0].delta.content:
-                description += chunk.choices[0].delta.content
-                print(chunk.choices[0].delta.content, end="", flush=True)
-
-        return description, 0.0  # Placeholder confidence
+        return completion.choices[0].message.content, 0.0
     except Exception as e:
         logger.error(f"LLM completion error: {str(e)}")
         return None, None
