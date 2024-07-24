@@ -10,6 +10,7 @@ from redis_operations import connect_redis, get_frame
 from openai_operations import process_image
 from state_processing import process_state
 from websocket_operations import connect_websocket, send_to_django
+from scheduled_checks import schedule_checks
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -47,6 +48,9 @@ async def main():
     state_processing_interval = 60  # Process state every 60 seconds
     last_state_processing = 0
 
+    # Schedule the checks
+    await schedule_checks()
+
     while True:
         try:
             # Check for frame in the queue
@@ -56,10 +60,9 @@ async def main():
                 result = await process_frame(frame_data[1])
                 if result:
                     camera_id, camera_index, timestamp, description, confidence, image_data = result
-                    await store_results(db_conn, camera_id, camera_index, timestamp, description, confidence, image_data)
                     camera_name = camera_names.get(camera_id, 'Unknown')
+                    await store_results(db_conn, camera_id, camera_index, timestamp, description, confidence, image_data, camera_name)
                     await send_to_django(websocket, f"{camera_name} {camera_index} {timestamp} {description}")
-                    
                     camera_count += 1
                     if camera_count >= len(camera_names) or camera_count == 1:
                         # All cameras processed, check if it's time to process state

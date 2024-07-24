@@ -20,3 +20,8 @@ async def get_frame(redis_client):
 
 async def publish_state_result(redis_client, state_result):
     await redis_client.publish(REDIS_STATE_RESULT_CHANNEL, state_result)
+
+async def get_latest_frame(redis_client, camera_id):
+    # Assuming we're storing the latest frame with a key like 'latest_frame:{camera_id}'
+    frame_data = await redis_client.get(f'latest_frame:{camera_id}')
+    return frame_data

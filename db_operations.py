@@ -3,6 +3,7 @@ import logging
 import psycopg2
 from psycopg2 import sql
 from config import DB_HOST, DB_NAME, DB_USER, DB_PASSWORD
+from datetime import datetime, time
 
 logger = logging.getLogger(__name__)
 
@@ -28,7 +29,8 @@ async def connect_database():
                     camera_index INTEGER,
                     timestamp TIMESTAMP,
                     description TEXT,
-                    confidence FLOAT
+                    confidence FLOAT,
+                    camera_name VARCHAR(255)
                 )
             """)
             
@@ -60,7 +62,7 @@ async def connect_database():
             logger.error(f"Failed to connect to PostgreSQL or set up schema: {str(e)}")
             await asyncio.sleep(5)
 
-async def store_results(conn, camera_id, camera_index, timestamp, description, confidence, image_data):
+async def store_results(conn, camera_id, camera_index, timestamp, description, confidence, image_data, camera_name):
     while True:
         try:
             cur = conn.cursor()
@@ -75,9 +77,9 @@ async def store_results(conn, camera_id, camera_index, timestamp, description, c
             
             cur.execute(
                 """INSERT INTO visionmon_metadata 
-                   (data_id, camera_id, camera_index, timestamp, description, confidence) 
-                   VALUES (%s, %s, %s, %s, %s, %s);""",
-                (binary_data_id, camera_id, camera_index, timestamp, description, confidence)
+                   (data_id, camera_id, camera_index, timestamp, description, confidence, camera_name) 
+                   VALUES (%s, %s, %s, %s, %s, %s, %s);""",
+                (binary_data_id, camera_id, camera_index, timestamp, description, confidence, camera_name)
             )
             
             cur.execute("COMMIT;")
@@ -111,3 +113,35 @@ async def fetch_hourly_aggregated_descriptions(conn):
         GROUP BY camera_id
     """)
     return dict(cur.fetchall())
+
+async def fetch_descriptions_for_timerange(conn, camera_id, start_time, end_time):
+    cur = conn.cursor()
+    
+    # Convert time objects to strings in HH:MM format
+    start_time_str = start_time.strftime('%H:%M')
+    end_time_str = end_time.strftime('%H:%M')
+    
+    cur.execute("""
+        SELECT STRING_AGG(description, ' ') as descriptions
+        FROM visionmon_metadata
+        WHERE camera_id = %s
+        AND (CAST(timestamp AS TIME) BETWEEN %s AND %s)
+        AND timestamp::date = CURRENT_DATE
+    """, (camera_id, start_time_str, end_time_str))
+    
+    result = cur.fetchone()
+    return result[0] if result else None
+
+# You may want to add a function to get the latest frame for a specific camera
+async def get_latest_frame(conn, camera_id):
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT vb.data
+        FROM visionmon_binary_data vb
+        JOIN visionmon_metadata vm ON vb.id = vm.data_id
+        WHERE vm.camera_id = %s
+        ORDER BY vm.timestamp DESC
+        LIMIT 1
+    """, (camera_id,))
+    result = cur.fetchone()
+    return result[0] if result else None
