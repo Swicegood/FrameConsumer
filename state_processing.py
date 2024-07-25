@@ -3,6 +3,26 @@ import logging
 from openai_operations import process_facility_state, process_camera_states
 from db_operations import fetch_latest_descriptions, fetch_hourly_aggregated_descriptions
 from redis_operations import publish_state_result
+import pytz
+from datetime import datetime
+
+def is_night_time(time_zone_str):
+    # Define night-time hours (e.g., 8 PM to 6 AM)
+    night_start = 20  # 8 PM
+    night_end = 6     # 6 AM
+
+    # Get the current time in the specified time zone
+    time_zone = pytz.timezone(time_zone_str)
+    current_time = datetime.now(time_zone)
+    current_hour = current_time.hour
+
+    # Check if the current hour is within night-time hours
+    if night_start <= current_hour or current_hour < night_end:
+        return True
+    return False
+
+# Example usage
+time_zone_str = 'America/New_York'
 
 logger = logging.getLogger(__name__)
 

@@ -1,6 +1,7 @@
 import logging
 from openai import AsyncOpenAI
 from config import OPENAI_BASE_URL, OPENAI_API_KEY, camera_names, camera_indexes
+from state_processing import is_night_time, time_zone_str
 
 logger = logging.getLogger(__name__)
 
@@ -86,6 +87,8 @@ async def process_camera_states(hourly_aggregated_descriptions):
     camera_states = {}
     for camera_id, aggregated_description in hourly_aggregated_descriptions.items():
         state = await process_camera_state(camera_id, aggregated_description)
+        if is_night_time(time_zone_str):
+            state += ", night-time"
         camera_states[camera_names[camera_id]+' '+str(camera_indexes[camera_id])] = state
     return camera_states
 
