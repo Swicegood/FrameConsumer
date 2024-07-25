@@ -9,7 +9,7 @@ from datetime import datetime
 def is_night_time(time_zone_str):
     # Define night-time hours (e.g., 8 PM to 6 AM)
     night_start = 20  # 8 PM
-    night_end = 6     # 6 AM
+    night_end = 3     # 3 AM
 
     # Get the current time in the specified time zone
     time_zone = pytz.timezone(time_zone_str)
