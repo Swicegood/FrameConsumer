@@ -3,79 +3,117 @@ import aiocron
 from datetime import datetime, time
 import pytz
 import json
-from openai_operations import process_image_for_curtains, process_descriptions_for_presence
-from db_operations import fetch_descriptions_for_timerange
-from redis_operations import connect_redis, get_latest_frame
+import base64
+from openai_operations import process_image, process_descriptions_for_presence
+from db_operations import fetch_descriptions_for_timerange, connect_database
+from redis_operations import connect_redis, get_latest_frame_wrapper
 from collections import Counter
+import logging
 
 ALERT_QUEUE = 'alert_queue'
 
-async def check_curtains(redis_client, camera_id, check_time):
-    frame = await get_latest_frame(redis_client, camera_id)
-    if frame is None:
-        print(f"No frame available for camera {camera_id} at {check_time}")
-        return
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 
-    results = []
-    for _ in range(20):
-        result = await process_image_for_curtains(frame)
-        results.append(result)
+async def check_curtains(redis_client, db_conn, camera_id, check_time):
+    try:
+        frame = await get_latest_frame_wrapper(db_conn, camera_id)
+        if frame is None:
+            logger.warning(f"No frame available for camera {camera_id} at {check_time}")
+            return
 
-    most_common = Counter(results).most_common(1)[0][0]
-    
-    if most_common == "yes":
-        alert_data = {
-            'camera_id': camera_id,
-            'check_time': check_time,
-            'message': f"Curtains are closed for camera {camera_id} at {check_time}",
-            'frame': frame.decode('utf-8') if frame else None
-        }
-        await redis_client.rpush(ALERT_QUEUE, json.dumps(alert_data))
+        # Convert frame to base64, handling different types
+        if isinstance(frame, memoryview):
+            frame_bytes = frame.tobytes()
+        elif isinstance(frame, bytes):
+            frame_bytes = frame
+        elif isinstance(frame, str):
+            frame_bytes = frame.encode('utf-8')
+        else:
+            logger.error(f"Unexpected frame type for camera {camera_id}: {type(frame)}")
+            return
 
-async def check_presence(redis_client, camera_id, start_time, end_time):
-    descriptions = await fetch_descriptions_for_timerange(camera_id, start_time, end_time)
-    if not descriptions:
-        print(f"No descriptions available for camera {camera_id} between {start_time} and {end_time}")
-        return
+        frame_base64 = base64.b64encode(frame_bytes).decode('utf-8')
+        logger.info(f"Frame data type: {type(frame)}, base64 length: {len(frame_base64)}")
 
-    results = []
-    for _ in range(20):
-        result = await process_descriptions_for_presence(descriptions)
-        results.append(result)
+        results = ""
+        for i in range(5):
+            try:
+                result, confidence = await process_image(frame_base64)
+                logger.info(f"Attempt {i+1}: Result for curtains check: {result}")
+                results += result
+            except Exception as e:
+                logger.error(f"Error in process_image_for_curtains (attempt {i+1}): {str(e)}")
 
-    most_common = Counter(results).most_common(1)[0][0]
-    
-    if most_common == "no":
-        frame = await get_latest_frame(redis_client, camera_id)
-        alert_data = {
-            'camera_id': camera_id,
-            'check_time': f"{start_time}-{end_time}",
-            'message': f"No person detected for camera {camera_id} between {start_time} and {end_time}",
-            'frame': frame.decode('utf-8') if frame else None
-        }
-        await redis_client.rpush(ALERT_QUEUE, json.dumps(alert_data))
+        if not results:
+            logger.warning(f"No valid results for curtains check on camera {camera_id}")
+            return
+        if "deities" not in results.lower():
+            alert_data = {
+                'camera_id': camera_id,
+                'check_time': check_time,
+                'message': f"Curtains are closed for camera {camera_id} at {check_time}",
+                'frame': frame_base64
+            }
+            await redis_client.rpush(ALERT_QUEUE, json.dumps(alert_data))
+            logger.info(f"Alert pushed to queue for camera {camera_id}: Curtains closed")
+        else:
+            logger.info(f"Curtains are open for camera {camera_id} at {check_time}")
+    except Exception as e:
+        logger.error(f"Error in check_curtains for camera {camera_id}: {str(e)}")
+
+
+
+async def check_presence(redis_client, db_conn, camera_id, start_time, end_time):
+    try:
+        descriptions = await fetch_descriptions_for_timerange(db_conn, camera_id, start_time, end_time)
+        if not descriptions:
+            logger.warning(f"No descriptions available for camera {camera_id} between {start_time} and {end_time}")
+            return
+
+        results = []
+        for _ in range(20):
+            result = await process_descriptions_for_presence(descriptions)
+            logger.info(f"Result for presence check: {result}")
+            results.append(result)
+
+        most_common = Counter(results).most_common(1)[0][0]
+        
+        if "no" in most_common:
+            frame = await get_latest_frame_wrapper(db_conn, camera_id)
+            alert_data = {
+                'camera_id': camera_id,
+                'check_time': f"{start_time}-{end_time}",
+                'message': f"No person detected for camera {camera_id} between {start_time} and {end_time}",
+                'frame': frame.decode('utf-8') if isinstance(frame, bytes) else None
+            }
+            await redis_client.rpush(ALERT_QUEUE, json.dumps(alert_data))
+            logger.info(f"Alert pushed to queue for camera {camera_id}: No person detected")
+    except Exception as e:
+        logger.error(f"Error in check_presence for camera {camera_id}: {str(e)}")
 
 async def schedule_checks():
     redis_client = await connect_redis()
+    db_conn = await connect_database()
     
     # Set timezone
     tz = pytz.timezone('America/New_York')
 
     # AXIS_ID checks
-    aiocron.crontab('33 12 * * *', func=check_curtains, args=(redis_client, "AXIS_ID", "12:33pm"), start=True, tz=tz)
-    aiocron.crontab('18 16 * * *', func=check_curtains, args=(redis_client, "AXIS_ID", "4:18pm"), start=True, tz=tz)
-    aiocron.crontab('3 19 * * *', func=check_curtains, args=(redis_client, "AXIS_ID", "7:03pm"), start=True, tz=tz)
+    aiocron.crontab('33 12 * * *', func=check_curtains, args=(redis_client, db_conn, "AXIS_ID", "12:33pm"), start=True, tz=tz)
+    aiocron.crontab('18 16 * * *', func=check_curtains, args=(redis_client, db_conn, "AXIS_ID", "4:18pm"), start=True, tz=tz)
+    aiocron.crontab('3 19 * * *', func=check_curtains, args=(redis_client, db_conn, "AXIS_ID", "7:03pm"), start=True, tz=tz)
 
     # sHlS7ewuGDEd2ef4 checks
-    aiocron.crontab('55 11 * * *', func=check_presence, args=(redis_client, "sHlS7ewuGDEd2ef4", time(11,55), time(12,0)), start=True, tz=tz)
-    aiocron.crontab('45 15 * * *', func=check_presence, args=(redis_client, "sHlS7ewuGDEd2ef4", time(15,45), time(15,55)), start=True, tz=tz)
-    aiocron.crontab('40 18 * * *', func=check_presence, args=(redis_client, "sHlS7ewuGDEd2ef4", time(18,40), time(18,45)), start=True, tz=tz)
+    aiocron.crontab('58-59 11 * * *', func=check_presence, args=(redis_client, db_conn, "sHlS7ewuGDEd2ef4", time(11,55), time(12,0)), start=True, tz=tz)
+    aiocron.crontab('55 15 * * *', func=check_presence, args=(redis_client, db_conn, "sHlS7ewuGDEd2ef4", time(15,45), time(15,55)), start=True, tz=tz)
+    aiocron.crontab('45 18 * * *', func=check_presence, args=(redis_client, db_conn, "sHlS7ewuGDEd2ef4", time(18,40), time(18,45)), start=True, tz=tz)
 
     # g8rHNVCflWO1ptKN checks
-    aiocron.crontab('30 3 * * *', func=check_presence, args=(redis_client, "g8rHNVCflWO1ptKN", time(3,30), time(4,0)), start=True, tz=tz)
-    aiocron.crontab('30 10 * * *', func=check_presence, args=(redis_client, "g8rHNVCflWO1ptKN", time(10,30), time(11,10)), start=True, tz=tz)
-    aiocron.crontab('30 16 * * *', func=check_presence, args=(redis_client, "g8rHNVCflWO1ptKN", time(16,30), time(16,45)), start=True, tz=tz)
-    aiocron.crontab('0 18 * * *', func=check_presence, args=(redis_client, "g8rHNVCflWO1ptKN", time(18,0), time(18,25)), start=True, tz=tz)
+    aiocron.crontab('45-59 3 * * *', func=check_presence, args=(redis_client, db_conn, "g8rHNVCflWO1ptKN", time(3,30), time(4,0)), start=True, tz=tz)
+    aiocron.crontab('0-10 11 * * *', func=check_presence, args=(redis_client, db_conn, "g8rHNVCflWO1ptKN", time(10,30), time(11,10)), start=True, tz=tz)
+    aiocron.crontab('30-45 16 * * *', func=check_presence, args=(redis_client, db_conn, "g8rHNVCflWO1ptKN", time(16,30), time(16,45)), start=True, tz=tz)
+    aiocron.crontab('0-15 18 * * *', func=check_presence, args=(redis_client, db_conn, "g8rHNVCflWO1ptKN", time(18,0), time(18,25)), start=True, tz=tz)
 
 if __name__ == "__main__":
     asyncio.get_event_loop().run_until_complete(schedule_checks())

@@ -104,7 +104,7 @@ async def process_image_for_curtains(base64_image):
         {
             "role": "user",
             "content": [
-                {"type": "text", "text": "In this image do you see any closed curtains? answer only yes or no. Only output yes or no, no other words"},
+                {"type": "text", "text": "In this image do you see any Deities dressed as if for a festival? answer only yes or no. Only output yes or no, no other words"},
                 {
                     "type": "image_url",
                     "image_url": {

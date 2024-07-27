@@ -2,6 +2,7 @@ import asyncio
 import aioredis
 import logging
 from config import REDIS_HOST, REDIS_PORT, REDIS_QUEUE, REDIS_STATE_RESULT_CHANNEL
+from db_operations import get_latest_frame
 
 logger = logging.getLogger(__name__)
 
@@ -21,7 +22,6 @@ async def get_frame(redis_client):
 async def publish_state_result(redis_client, state_result):
     await redis_client.publish(REDIS_STATE_RESULT_CHANNEL, state_result)
 
-async def get_latest_frame(redis_client, camera_id):
-    # Assuming we're storing the latest frame with a key like 'latest_frame:{camera_id}'
-    frame_data = await redis_client.get(f'latest_frame:{camera_id}')
-    return frame_data
+async def get_latest_frame_wrapper(db_conn, camera_id):
+    # This function now uses the database connection to fetch the latest frame
+    return await get_latest_frame(db_conn, camera_id)
