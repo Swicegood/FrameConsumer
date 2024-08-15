@@ -29,7 +29,7 @@ async def process_image(base64_image):
 
     try:
         completion = await client.chat.completions.create(
-            model="not used",
+            model="llava",
             messages=messages,
             max_tokens=500,
         )
@@ -46,7 +46,7 @@ Most Recent Descriptions from all cameras: {all_recent_descriptions}"""
 
     try:
         completion = await client.chat.completions.create(
-            model="not used",
+            model="llava",
             messages=[
                 {"role": "system", "content": "You are an AI tasked with determining the overall current state of a facility based on the most recent security camera descriptions from all areas."},
                 {"role": "user", "content": prompt}
@@ -71,7 +71,7 @@ Aggregated Descriptions from the last hour for camera {camera_id}: {aggregated_d
 
     try:
         completion = await client.chat.completions.create(
-            model="not used",
+            model="llava",
             messages=[
                 {"role": "system", "content": "You are an AI tasked with determining the state of a specific area in a facility based on aggregated security camera descriptions from the last hour."},
                 {"role": "user", "content": prompt}
@@ -117,7 +117,7 @@ async def process_image_for_curtains(base64_image):
 
     try:
         completion = await client.chat.completions.create(
-            model="not used",
+            model="llava",
             messages=messages,
             max_tokens=10,
         )
@@ -134,7 +134,7 @@ Descriptions: {descriptions}"""
 
     try:
         completion = await client.chat.completions.create(
-            model="not used",
+            model="llava",
             messages=[
                 {"role": "system", "content": "You are an AI tasked with determining if people are present based on security camera descriptions."},
                 {"role": "user", "content": prompt}
