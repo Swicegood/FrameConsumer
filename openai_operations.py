@@ -31,7 +31,7 @@ async def process_image(base64_image):
         completion = await client.chat.completions.create(
             model="llava",
             messages=messages,
-            max_tokens=500,
+            max_tokens=200,
         )
 
         return completion.choices[0].message.content, 0.0
