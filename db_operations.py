@@ -62,34 +62,23 @@ async def connect_database():
             logger.error(f"Failed to connect to PostgreSQL or set up schema: {str(e)}")
             await asyncio.sleep(5)
 
-async def store_results(conn, camera_id, camera_index, timestamp, description, confidence, image_data, camera_name):
-    while True:
-        try:
-            cur = conn.cursor()
-            
-            cur.execute("BEGIN;")
-            
-            cur.execute(
-                "INSERT INTO visionmon_binary_data (data) VALUES (%s) RETURNING id;",
-                (psycopg2.Binary(image_data),)
-            )
-            binary_data_id = cur.fetchone()[0]
-            
-            cur.execute(
-                """INSERT INTO visionmon_metadata 
-                   (data_id, camera_id, camera_index, timestamp, description, confidence, camera_name) 
-                   VALUES (%s, %s, %s, %s, %s, %s, %s);""",
-                (binary_data_id, camera_id, camera_index, timestamp, description, confidence, camera_name)
+import asyncpg
+
+async def store_results(pool, camera_id, camera_index, timestamp, description, confidence, image_data, camera_name):
+    async with pool.acquire() as conn:
+        async with conn.transaction():
+            binary_data_id = await conn.fetchval(
+                "INSERT INTO visionmon_binary_data (data) VALUES ($1) RETURNING id",
+                image_data
             )
             
-            cur.execute("COMMIT;")
-            
-            logger.info(f"Stored results and image for camera {camera_index}")
-            return
-        except psycopg2.Error as e:
-            logger.error(f"Database error: {str(e)}")
-            cur.execute("ROLLBACK;")
-            await asyncio.sleep(5)
+            await conn.execute("""
+                INSERT INTO visionmon_metadata 
+                (data_id, camera_id, camera_index, timestamp, description, confidence, camera_name) 
+                VALUES ($1, $2, $3, $4, $5, $6, $7)
+            """, binary_data_id, camera_id, camera_index, timestamp, description, confidence, camera_name)
+    
+    logger.info(f"Stored results and image for camera {camera_index}")
 
 async def fetch_latest_descriptions(conn):
     cur = conn.cursor()

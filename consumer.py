@@ -4,13 +4,14 @@ import time
 from datetime import datetime
 import base64
 import ast
-from config import camera_names, camera_indexes, REDIS_STATE_CHANNEL
+from config import camera_names, camera_indexes, REDIS_STATE_CHANNEL, DB_HOST, DB_NAME, DB_USER, DB_PASSWORD
 from db_operations import connect_database, store_results
 from redis_operations import connect_redis, get_frame
 from openai_operations import process_image
 from state_processing import process_state
 from websocket_operations import connect_websocket, send_to_django
 from scheduled_checks import schedule_checks
+import asyncpg
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -42,6 +43,12 @@ async def process_frame(frame_data):
 async def main():
     redis_client = await connect_redis()
     db_conn = await connect_database()
+    pool = await asyncpg.create_pool(
+        host=DB_HOST,
+        database=DB_NAME,
+        user=DB_USER,
+        password=DB_PASSWORD
+    )
     websocket = await connect_websocket()
 
     camera_count = 0
@@ -61,7 +68,7 @@ async def main():
                 if result:
                     camera_id, camera_index, timestamp, description, confidence, image_data = result
                     camera_name = camera_names.get(camera_id, 'Unknown')
-                    await store_results(db_conn, camera_id, camera_index, timestamp, description, confidence, image_data, camera_name)
+                    await store_results(pool, camera_id, camera_index, timestamp, description, confidence, image_data, camera_name)
                     await send_to_django(websocket, f"{camera_name} {camera_index} {timestamp} {description}")
                     camera_count += 1
                     if camera_count >= len(camera_names) or camera_count == 1:
