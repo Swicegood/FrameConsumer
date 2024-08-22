@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 
 PROCESSING_SET = "processing_frames"
 PROCESSING_TIMEOUT = 180  # 3 minutes
-MAX_QUEUE_SIZE = 20  # Limit the queue size for each camera
+MAX_QUEUE_SIZE = 1  # Limit the queue size for each camera
 
 
 class FrameProcessor:
