@@ -67,11 +67,11 @@ async def main():
                 camera_id = CAMERA_IDS[camera_index]
                 frame_data = await redis.get(REDIS_FRAME_KEY.format(camera_id))
                 
-                if frame_data:
+                if frame_data and camera_index % MODULUS == INSTANCE_INDEX:
                 
                     await frame_processor.process_frame(frame_data, pool, websocket)
                 
-                camera_index = (camera_index + MODULUS) % len(CAMERA_IDS)
+                camera_index = (camera_index) % len(CAMERA_IDS)
                 
                 camera_count += 1
                 if PROCESS_STATE:
