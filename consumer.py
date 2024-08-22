@@ -45,11 +45,11 @@ class FrameProcessor:
                 await store_results(pool, camera_id, camera_index, timestamp, description, confidence, image_data, camera_name)
                 await send_to_django(websocket, f"{camera_name} {camera_index} {timestamp} {description}")
                 
-            self.last_processed_time[camera_id] = time.time()
-            
-            logger.info(f"Processed frame for camera {camera_id}")
-            await redis.srem(PROCESSING_SET, frame_data)
-            logger.info("Removed frame from processing set")
+                self.last_processed_time[camera_id] = time.time()
+                
+                logger.info(f"Processed frame for camera {camera_id}")
+                await redis.srem(PROCESSING_SET, frame_data)
+                logger.info("Removed frame from processing set")
         except Exception as e:
             logger.error(f"Error processing frame: {str(e)}")
             await redis.srem(PROCESSING_SET, frame_data)
