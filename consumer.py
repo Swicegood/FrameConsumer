@@ -25,10 +25,11 @@ PROCESSING_TIMEOUT = 300  # 5 minutes
 
 class FrameProcessor:
     def __init__(self):
-        self.last_processed_time = defaultdict(float)
+        self.last_processed_time = {camera: 0 for camera in camera_names}
         self.frame_queue = defaultdict(asyncio.Queue)
 
     async def process_frame(self, frame_data, pool, websocket, redis):
+        logger.info(f"Processing frame: {frame_data[:100]}...")
         try:
             data = ast.literal_eval(frame_data.decode('utf-8'))
             camera_id = data['camera_id']
@@ -46,12 +47,13 @@ class FrameProcessor:
                 
             self.last_processed_time[camera_id] = time.time()
             
-            # Remove the frame from the processing set
+            logger.info(f"Processed frame for camera {camera_id}")
             await redis.srem(PROCESSING_SET, frame_data)
+            logger.info("Removed frame from processing set")
         except Exception as e:
             logger.error(f"Error processing frame: {str(e)}")
-            # In case of error, remove from processing set to allow reprocessing
             await redis.srem(PROCESSING_SET, frame_data)
+            logger.info("Removed errored frame from processing set")
 
     async def add_frame(self, frame_data):
         data = ast.literal_eval(frame_data.decode('utf-8'))
@@ -65,7 +67,6 @@ class FrameProcessor:
         # If we have a frame for this camera, return it
         if not self.frame_queue[oldest_camera].empty():
             return await self.frame_queue[oldest_camera].get()
-        
         # If not, find the next available frame
         for camera_id, queue in self.frame_queue.items():
             if not queue.empty():
@@ -73,27 +74,58 @@ class FrameProcessor:
         
         return None
 
+async def inspect_redis(redis):
+    # Check the size of the processing set
+    size = await redis.scard(PROCESSING_SET)
+    print(f"Size of processing set: {size}")
+
+    # Get all members of the processing set
+    members = await redis.smembers(PROCESSING_SET)
+    print(f"Members of processing set: {members}")
+
+    # Check the size of the input queue
+    queue_size = await redis.llen(REDIS_QUEUE)
+    print(f"Size of input queue: {queue_size}")
+
+    # Get the first few items in the input queue (without removing them)
+    queue_items = await redis.lrange(REDIS_QUEUE, 0, 5)
+    print(f"First few items in the input queue: {queue_items}")
+            
 async def get_work(redis):
-    while True:
-        # Atomic operation: move an item from the queue to the processing set
-        frame = await redis.rpoplpush(REDIS_QUEUE, PROCESSING_SET)
-        if frame:
+    frame = await redis.rpop(REDIS_QUEUE)
+    if frame: 
+        logger.info(f"Got frame from queue: {frame[:100]}...")  # Log first 100 chars
+        try:
+            ast.literal_eval(frame.decode('utf-8'))
+            await redis.sadd(PROCESSING_SET, frame)
+            logger.info("Added frame to processing set")
             return frame
-        await asyncio.sleep(0.1)
+        except (ValueError, SyntaxError) as e:
+            logger.error(f"Invalid data in Redis queue: {e}")
+    return None
 
 async def clean_processing_set(redis):
     while True:
         current_time = time.time()
-        async for frame in redis.iscan(match=PROCESSING_SET):
-            try:
-                data = json.loads(frame)
-                if current_time - data['enqueue_time'] > PROCESSING_TIMEOUT:
-                    # If frame has been in processing for too long, move it back to the queue
-                    await redis.smove(PROCESSING_SET, REDIS_QUEUE, frame)
-            except json.JSONDecodeError:
-                # If frame data is invalid, remove it from the processing set
-                await redis.srem(PROCESSING_SET, frame)
-        await asyncio.sleep(60)  # Run this check every minute
+        cursor = 0
+        while True:
+            cursor, keys = await redis.sscan(PROCESSING_SET, cursor)
+            for frame in keys:
+                try:
+                    data = ast.literal_eval(frame.decode('utf-8'))
+                    frame_time = datetime.fromisoformat(data['timestamp']).timestamp()
+                    if current_time - frame_time > PROCESSING_TIMEOUT:
+                        # If frame has been in processing for too long, move it back to the queue
+                        await redis.srem(PROCESSING_SET, frame)
+                        await redis.lpush(REDIS_QUEUE, frame)
+                except (ValueError, SyntaxError, AttributeError) as e:
+                    logger.error(f"Invalid data in processing set: {e}")
+                    logger.error(f"Problematic data: {frame}")
+                    # Remove invalid data from the processing set
+                    await redis.srem(PROCESSING_SET, frame)
+            if cursor == 0:
+                break
+        await asyncio.sleep(60)
 
 async def main():
     redis_client = await connect_redis()
@@ -102,53 +134,69 @@ async def main():
     pool = await asyncpg.create_pool(host=DB_HOST, database=DB_NAME, user=DB_USER, password=DB_PASSWORD)
     websocket = await connect_websocket()
 
-    await redis.delete(PROCESSING_SET)  # Clear any existing data
-    await redis.sadd(PROCESSING_SET, "dummy")  # Ensure it's created as a set
-    await redis.srem(PROCESSING_SET, "dummy")  # Remove the dummy value
+    # Ensure PROCESSING_SET is a set
+    await redis.delete(PROCESSING_SET)
+    await redis.sadd(PROCESSING_SET, "dummy")
+    await redis.srem(PROCESSING_SET, "dummy")
     
-    # Start the cleaning task
     asyncio.create_task(clean_processing_set(redis))
+    #asyncio.create_task(periodic_inspection(redis))
     
     frame_processor = FrameProcessor()
     
     camera_count = 0
-    state_processing_interval = 60  # Process state every 60 seconds
+    state_processing_interval = 60
     last_state_processing = 0
 
-    # Schedule the checks
     await schedule_checks()
-
+    try:
+        while True:
+            try:
+                loop_start_time = time.time()
+                frames_processed = 0
+                    
+                while time.time() - loop_start_time < 10:  # 10-second timeout
+                    frame_data = await asyncio.wait_for(get_work(redis), timeout=1.0)
+                    if frame_data is None:
+                        logger.debug("No frames available, breaking inner loop")
+                        break
+                    
+                    logger.info(f"Adding frame to processor: {frame_data[:50]}...")  # Log first 50 chars
+                    await frame_processor.add_frame(frame_data)
+                    frames_processed += 1
+                    
+                # Process the next frame
+                next_frame = await frame_processor.get_next_frame()
+                if next_frame:
+                    await frame_processor.process_frame(next_frame, pool, websocket, redis)
+                    camera_count += 1
+                    if camera_count >= len(camera_names):
+                        # All cameras processed, check if it's time to process state
+                        current_time = time.time()
+                        if current_time - last_state_processing >= state_processing_interval:
+                            await process_state(db_conn, redis_client)
+                            last_state_processing = current_time
+                        camera_count = 0
+                
+                # Check for state processing request from Django
+                state_request = await redis_client.blpop(REDIS_STATE_CHANNEL, timeout=1)
+                if state_request:
+                    await process_state(db_conn, redis_client)
+                pass
+            except asyncio.TimeoutError:
+                logger.warning("Timeout while waiting for work, continuing...")
+            except Exception as e:
+                logger.error(f"Error in main loop: {str(e)}")
+                await asyncio.sleep(1)
+    finally:
+        # Close Redis connection
+        redis.close()
+        await redis.wait_closed()
+            
+async def periodic_inspection(redis):
     while True:
-        try:
-            # Fetch all available frames from Redis
-            while True:
-                frame_data = await get_work(redis)
-                if frame_data is None:
-                    break
-                await frame_processor.add_frame(frame_data)
-            
-            # Process the next frame
-            next_frame = await frame_processor.get_next_frame()
-            if next_frame:
-                await frame_processor.process_frame(next_frame, pool, websocket, redis)
-                camera_count += 1
-                if camera_count >= len(camera_names):
-                    # All cameras processed, check if it's time to process state
-                    current_time = time.time()
-                    if current_time - last_state_processing >= state_processing_interval:
-                        await process_state(db_conn, redis_client)
-                        last_state_processing = current_time
-                    camera_count = 0
-            
-            # Check for state processing request from Django
-            state_request = await redis_client.blpop(REDIS_STATE_CHANNEL, timeout=1)
-            if state_request:
-                await process_state(db_conn, redis_client)
-
-            await asyncio.sleep(0.1)  # Short sleep to prevent CPU overuse
-        except Exception as e:
-            logger.error(f"Error in main loop: {str(e)}")
-            await asyncio.sleep(1)
+        await inspect_redis(redis)
+        await asyncio.sleep(60)  # Inspect every 60 seconds
 
 if __name__ == "__main__":
     asyncio.run(main())
