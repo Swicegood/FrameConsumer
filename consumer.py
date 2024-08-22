@@ -22,14 +22,16 @@ logger = logging.getLogger(__name__)
 
 PROCESSING_SET = "processing_frames"
 PROCESSING_TIMEOUT = 180  # 3 minutes
+MAX_QUEUE_SIZE = 20  # Limit the queue size for each camera
+
 
 class FrameProcessor:
     def __init__(self):
         self.last_processed_time = {camera: 0 for camera in camera_names}
-        self.frame_queue = defaultdict(asyncio.Queue)
+        self.frame_queue = defaultdict(lambda: asyncio.Queue(maxsize=MAX_QUEUE_SIZE))
 
     async def process_frame(self, frame_data, pool, websocket, redis):
-        logger.info(f"Processing frame: {frame_data[:100]}...")
+        logger.info(f"Processing frame: {frame_data[:120]}...")
         try:
             data = ast.literal_eval(frame_data.decode('utf-8'))
             camera_id = data['camera_id']
@@ -58,7 +60,10 @@ class FrameProcessor:
     async def add_frame(self, frame_data):
         data = ast.literal_eval(frame_data.decode('utf-8'))
         camera_id = data['camera_id']
-        await self.frame_queue[camera_id].put(frame_data)
+        try:
+            await asyncio.wait_for(self.frame_queue[camera_id].put(frame_data), timeout=1.0)
+        except asyncio.TimeoutError:
+            logger.warning(f"Queue full for camera {camera_id}, dropping frame")
 
     async def get_next_frame(self):
         # Find the camera with the oldest processed frame
@@ -109,7 +114,7 @@ async def clean_processing_set(redis):
         current_time = time.time()
         cursor = 0
         while True:
-            cursor, keys = await redis.sscan(PROCESSING_SET, cursor)
+            cursor, keys = await redis.sscan(PROCESSING_SET, cursor, count=100)  # Process in smaller batches
             for frame in keys:
                 try:
                     data = ast.literal_eval(frame.decode('utf-8'))
