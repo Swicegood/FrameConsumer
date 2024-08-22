@@ -21,7 +21,7 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 logger = logging.getLogger(__name__)
 
 PROCESSING_SET = "processing_frames"
-PROCESSING_TIMEOUT = 300  # 5 minutes
+PROCESSING_TIMEOUT = 180  # 3 minutes
 
 class FrameProcessor:
     def __init__(self):
@@ -94,7 +94,7 @@ async def inspect_redis(redis):
 async def get_work(redis):
     frame = await redis.rpop(REDIS_QUEUE)
     if frame: 
-        logger.info(f"Got frame from queue: {frame[:100]}...")  # Log first 100 chars
+        logger.info(f"Got frame from queue: {frame[:120]}...")  # Log first 100 chars
         try:
             ast.literal_eval(frame.decode('utf-8'))
             await redis.sadd(PROCESSING_SET, frame)
