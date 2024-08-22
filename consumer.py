@@ -71,7 +71,7 @@ async def main():
                 
                     await frame_processor.process_frame(frame_data, pool, websocket)
                 
-                camera_index = (camera_index) % len(CAMERA_IDS)
+                camera_index = (camera_index + 1) % len(CAMERA_IDS)
                 
                 camera_count += 1
                 if PROCESS_STATE:
