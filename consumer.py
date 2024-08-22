@@ -8,7 +8,7 @@ import time
 from datetime import datetime
 import base64
 import ast
-from config import REDIS_HOST, REDIS_PORT, REDIS_QUEUE, DB_HOST, DB_NAME, DB_USER, DB_PASSWORD, REDIS_STATE_CHANNEL, PROCESS_STATE, camera_names, CAMERA_IDS
+from config import REDIS_HOST, REDIS_PORT, REDIS_QUEUE, DB_HOST, DB_NAME, DB_USER, DB_PASSWORD, REDIS_STATE_CHANNEL, PROCESS_STATE, camera_names, CAMERA_IDS, MODULUS, INSTANCE_INDEX
 from db_operations import connect_database, store_results
 from redis_operations import connect_redis, get_frame
 from openai_operations import process_image
@@ -56,7 +56,7 @@ async def main():
 
     frame_processor = FrameProcessor()
     
-    camera_index = 0
+    camera_index = INSTANCE_INDEX
     camera_count = 0
     state_processing_interval = 60
     last_state_processing = 0
@@ -71,7 +71,7 @@ async def main():
                 
                     await frame_processor.process_frame(frame_data, pool, websocket)
                 
-                camera_index = (camera_index + 1) % len(CAMERA_IDS)
+                camera_index = (camera_index + MODULUS) % len(CAMERA_IDS)
                 
                 camera_count += 1
                 if PROCESS_STATE:
