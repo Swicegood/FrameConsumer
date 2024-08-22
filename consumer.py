@@ -61,6 +61,7 @@ class FrameProcessor:
         data = ast.literal_eval(frame_data.decode('utf-8'))
         camera_id = data['camera_id']
         try:
+            await self.frame_queue[camera_id].get()
             await asyncio.wait_for(self.frame_queue[camera_id].put(frame_data), timeout=1.0)
         except asyncio.TimeoutError:
             logger.warning(f"Queue full for camera {camera_id}, dropping frame")
