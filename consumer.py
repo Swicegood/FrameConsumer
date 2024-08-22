@@ -9,7 +9,7 @@ from datetime import datetime
 import base64
 import ast
 from collections import defaultdict
-from config import REDIS_HOST, REDIS_PORT, REDIS_QUEUE, DB_HOST, DB_NAME, DB_USER, DB_PASSWORD, REDIS_STATE_CHANNEL, camera_names
+from config import REDIS_HOST, REDIS_PORT, REDIS_QUEUE, DB_HOST, DB_NAME, DB_USER, DB_PASSWORD, REDIS_STATE_CHANNEL, PROCESS_STATE, camera_names
 from db_operations import connect_database, store_results
 from redis_operations import connect_redis, get_frame
 from openai_operations import process_image
@@ -170,13 +170,14 @@ async def main():
                 if next_frame:
                     await frame_processor.process_frame(next_frame, pool, websocket, redis)
                     camera_count += 1
-                    if camera_count >= len(camera_names):
-                        # All cameras processed, check if it's time to process state
-                        current_time = time.time()
-                        if current_time - last_state_processing >= state_processing_interval:
-                            await process_state(db_conn, redis_client)
-                            last_state_processing = current_time
-                        camera_count = 0
+                    if PROCESS_STATE:
+                        if camera_count >= len(camera_names):
+                            # All cameras processed, check if it's time to process state
+                            current_time = time.time()
+                            if current_time - last_state_processing >= state_processing_interval:
+                                await process_state(db_conn, redis_client)
+                                last_state_processing = current_time
+                            camera_count = 0
                 
                 # Check for state processing request from Django
                 state_request = await redis_client.blpop(REDIS_STATE_CHANNEL, timeout=1)

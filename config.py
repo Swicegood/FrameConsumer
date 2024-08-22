@@ -21,6 +21,8 @@ OPENAI_API_KEY = os.getenv('OPENAI_API_KEY', 'lm-studio')
 # Django WebSocket URL
 DJANGO_WEBSOCKET_URL = os.getenv('DJANGO_WEBSOCKET_URL', 'ws://localhost:8001/ws/llm_output/')
 
+PROCESS_STATE = os.getenv('PROCESS_STATE', False)
+
 # Camera information
 camera_names = {
     "I6Dvhhu1azyV9rCu": "Audio_Visual", "oaQllpjP0sk94nCV": "Bhoga_Shed", "PxnDZaXu2awYbMmS": "Back_Driveway",
