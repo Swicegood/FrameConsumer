@@ -8,7 +8,7 @@ import time
 from datetime import datetime
 import base64
 import ast
-from config import REDIS_HOST, REDIS_PORT, REDIS_QUEUE, DB_HOST, DB_NAME, DB_USER, DB_PASSWORD, REDIS_STATE_CHANNEL, PROCESS_STATE, camera_names, CAMERA_IDS, MODULUS, INSTANCE_INDEX
+from config import REDIS_HOST, REDIS_PORT, REDIS_QUEUE, DB_HOST, DB_NAME, DB_USER, DB_PASSWORD, REDIS_STATE_CHANNEL, PROCESS_STATE, camera_names, CAMERA_IDS, MODULUS, INSTANCE_INDEX, ADDITIONAL_INDEX
 from db_operations import connect_database, store_results
 from redis_operations import connect_redis, get_frame
 from openai_operations import process_image
@@ -67,7 +67,7 @@ async def main():
                 camera_id = CAMERA_IDS[camera_index]
                 frame_data = await redis.get(REDIS_FRAME_KEY.format(camera_id))
                 
-                if frame_data and camera_index % MODULUS == INSTANCE_INDEX:
+                if frame_data and (camera_index % MODULUS == INSTANCE_INDEX or camera_index % MODULUS == ADDITIONAL_INDEX):
                 
                     await frame_processor.process_frame(frame_data, pool, websocket)
                 

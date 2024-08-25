@@ -23,8 +23,9 @@ DJANGO_WEBSOCKET_URL = os.getenv('DJANGO_WEBSOCKET_URL', 'ws://localhost:8001/ws
 
 PROCESS_STATE = os.getenv('PROCESS_STATE', False)
 
-MODULUS = int(os.getenv('NUM_INSTANCES', "1"))
+MODULUS = int(os.getenv('MODULUS', "1"))
 INSTANCE_INDEX = int(os.getenv('INSTANCE_INDEX', "0"))
+ADDITIONAL_INDEX = int(os.getenv('ADDITIONAL_INDEX', "2"))
 
 # Camera information
 camera_names = {
