@@ -67,7 +67,7 @@ async def main():
                 camera_id = CAMERA_IDS[camera_index]
                 frame_data = await redis.get(REDIS_FRAME_KEY.format(camera_id))
                 
-                if frame_data and (camera_index % MODULUS == INSTANCE_INDEX or (camera_index + ADDITIONAL_INDEX) % MODULUS == ADDITIONAL_INDEX):
+                if frame_data and (camera_index % MODULUS == INSTANCE_INDEX or (camera_index + ADDITIONAL_INDEX) % MODULUS == INSTANCE_INDEX):
                 
                     await frame_processor.process_frame(frame_data, pool, websocket)
                 
