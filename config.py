@@ -21,7 +21,7 @@ OPENAI_API_KEY = os.getenv('OPENAI_API_KEY', 'lm-studio')
 # Django WebSocket URL
 DJANGO_WEBSOCKET_URL = os.getenv('DJANGO_WEBSOCKET_URL', 'ws://localhost:8001/ws/llm_output/')
 
-PROCESS_STATE = os.getenv('PROCESS_STATE', False)
+PROCESS_STATE = bool(os.getenv('PROCESS_STATE', False))
 
 MODULUS = int(os.getenv('MODULUS', "1"))
 INSTANCE_INDEX = int(os.getenv('INSTANCE_INDEX', "0"))
