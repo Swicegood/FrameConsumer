@@ -64,7 +64,7 @@ async def process_camera_state(camera_id, aggregated_description):
     if camera_id in ["oaQllpjP0sk94nCV", "OSF13XTCKhpIkyXc"]:
         additional_state = ", door open"
         additional_definition = "'door open' means the door is open which it shoudn't be,"
-    prompt = f"""Please analyze the following aggregated descriptions from the last hour for a single camera and determine the state of this specific area of the facility. Note "bustling" means a lot of activity right now, "festival happening" means special pageantry taking place, "crowd gathering" means people are gathering, {additional_definition} "quiet" means not much activity, "person present" means an individual is there, and "people eating" means people are consuming food.
+    prompt = f"""Please analyze the following aggregated descriptions from the last hour of this camera and determine the state of this specific area of the facility. Note "bustling" means a lot of activity right now, "festival happening" means special pageantry taking place, "crowd gathering" means people are gathering, {additional_definition} "quiet" means not much activity, "person present" means an individual is there, and "people eating" means people are consuming food.
     Output one or more of the following states: "bustling", "festival happening", "crowd gathering", "quiet", "person present"{additional_state} or "people eating". Please output only those words and nothing else.
 
 Aggregated Descriptions from the last hour for camera {camera_id}: {aggregated_description}"""
@@ -73,7 +73,7 @@ Aggregated Descriptions from the last hour for camera {camera_id}: {aggregated_d
         completion = await client.chat.completions.create(
             model="llava",
             messages=[
-                {"role": "system", "content": "You are an AI tasked with determining the state of a specific area in a facility based on aggregated security camera descriptions from the last hour."},
+                {"role": "system", "content": "You are an AI tasked with determining the state of a specific area in a facility based on aggregated security camera descriptions from the last hour. The descriptions you see are from one camera. Look for patterns in the snapshot descriptions over the whole time period to determine the state."},
                 {"role": "user", "content": prompt}
             ],
             max_tokens=20,
