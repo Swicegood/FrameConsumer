@@ -69,7 +69,7 @@ class FrameProcessor:
                 logger.info(f"Processed new frame for camera {camera_id}")
             else:
                 # Update timestamp even if the image wasn't processed
-                await update_timestamp(pool, camera_id, timestamp, description, confidence)
+                await update_timestamp(pool, camera_id, timestamp)
                 logger.info(f"Updated timestamp for camera {camera_id} without processing new image")
             
             self.last_processed_time[camera_id] = time.time()
