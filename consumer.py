@@ -18,10 +18,13 @@ from websocket_operations import connect_websocket, send_to_django
 from image_processing import ImageProcessor
 from scheduled_checks import schedule_checks
 
+
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
 REDIS_FRAME_KEY = "camera_frames:{}"  # Will be formatted with camera_id
+MAX_RETRIES = 3
+RETRY_DELAY = 1  # seconds
 
 class FrameProcessor:
     def __init__(self):
@@ -40,8 +43,24 @@ class FrameProcessor:
             nparr = np.frombuffer(image_data, np.uint8)
             img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
 
-            description, confidence, was_processed = await self.image_processor.process_image_if_changed(camera_id, img)
-            
+            description, confidence, was_processed = None, None, False
+            retries = 0
+
+            while retries < MAX_RETRIES:
+                description, confidence, was_processed = await self.image_processor.process_image_if_changed(camera_id, img)
+                
+                if description is not None and confidence is not None:
+                    break
+                
+                retries += 1
+                if retries < MAX_RETRIES:
+                    logger.warning(f"Retry {retries} for camera {camera_id}")
+                    await asyncio.sleep(RETRY_DELAY)
+
+            if description is None or confidence is None:
+                logger.error(f"Failed to process image for camera {camera_id} after {MAX_RETRIES} attempts")
+                return
+
             camera_name = camera_names.get(camera_id, 'Unknown')
             
             if was_processed:
@@ -50,15 +69,14 @@ class FrameProcessor:
                 logger.info(f"Processed new frame for camera {camera_id}")
             else:
                 # Update timestamp even if the image wasn't processed
-                await update_timestamp(pool, camera_id, timestamp)
+                await update_timestamp(pool, camera_id, timestamp, description, confidence)
                 logger.info(f"Updated timestamp for camera {camera_id} without processing new image")
             
             self.last_processed_time[camera_id] = time.time()
             
-            
-            
         except Exception as e:
-            logger.error(f"Error processing frame: {str(e)}")
+            logger.error(f"Error processing frame for camera {camera_id}: {str(e)}")
+
 
 async def main():
     redis_client = await connect_redis()
