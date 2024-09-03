@@ -134,3 +134,15 @@ async def get_latest_frame(conn, camera_id):
     """, (camera_id,))
     result = cur.fetchone()
     return result[0] if result else None
+
+async def update_timestamp(pool, camera_id, timestamp):
+    async with pool.acquire() as conn:
+        await conn.execute("""
+            UPDATE visionmon_metadata
+            SET timestamp = $2
+            WHERE camera_id = $1 AND timestamp = (
+                SELECT MAX(timestamp)
+                FROM visionmon_metadata
+                WHERE camera_id = $1
+            )
+        """, camera_id, timestamp)

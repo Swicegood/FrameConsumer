@@ -13,6 +13,7 @@ class ImageProcessor:
         self.base_frames = {}
         self.change_accumulators = {}
         self.last_processed_images = {}
+        self.last_processed_info = {}  # Store last processed description and confidence
         self.ssim_threshold = 0.95  # Adjust this threshold as needed
 
     async def should_process_image(self, camera_id, img):
@@ -44,21 +45,26 @@ class ImageProcessor:
     def get_last_processed_image(self, camera_id):
         return self.last_processed_images.get(camera_id)
 
+    def get_last_processed_info(self, camera_id):
+        return self.last_processed_info.get(camera_id, (None, None))
+
     async def process_image_if_changed(self, camera_id, img):
-        if await self.should_process_image(camera_id, img):
+        should_process = await self.should_process_image(camera_id, img)
+        if should_process:
             # Encode the image as PNG
             _, buffer = cv2.imencode('.png', img)
             base64_image = base64.b64encode(buffer).decode('utf-8')
             
             description, confidence = await process_image(base64_image)
-            return description, confidence
+            self.last_processed_info[camera_id] = (description, confidence)
+            return description, confidence, True
         else:
-            logger.info(f"Image for camera {camera_id} hasn't changed significantly. Skipping processing.")
-            return None, None
+            logger.info(f"Image for camera {camera_id} hasn't changed significantly. Returning last processed info.")
+            description, confidence = self.get_last_processed_info(camera_id)
+            return description, confidence, False
 
     def normalize_change_accumulator(self, camera_id):
         max_change = np.max(self.change_accumulators[camera_id])
         if max_change > 0:
             self.change_accumulators[camera_id] /= max_change
 
-    

@@ -11,14 +11,12 @@ import ast
 import cv2
 import numpy as np
 from config import REDIS_HOST, REDIS_PORT, REDIS_QUEUE, DB_HOST, DB_NAME, DB_USER, DB_PASSWORD, REDIS_STATE_CHANNEL, PROCESS_STATE, camera_names, CAMERA_IDS, MODULUS, INSTANCE_INDEX, ADDITIONAL_INDEX
-from db_operations import connect_database, store_results
+from db_operations import connect_database, store_results, update_timestamp
 from redis_operations import connect_redis, get_frame
-from openai_operations import process_image
 from state_processing import process_state
 from websocket_operations import connect_websocket, send_to_django
 from image_processing import ImageProcessor
 from scheduled_checks import schedule_checks
-
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -37,23 +35,28 @@ class FrameProcessor:
             camera_index = data['camera_index']
             timestamp = datetime.fromisoformat(data['timestamp'])
             image_data = data['frame']
-            base64_image = base64.b64encode(image_data).decode('utf-8')
+            
             # Decode image data
             nparr = np.frombuffer(image_data, np.uint8)
             img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
 
-            description, confidence = await self.image_processor.process_image_if_changed(camera_id, img)
+            description, confidence, was_processed = await self.image_processor.process_image_if_changed(camera_id, img)
             
-            if description is not None:
-                camera_name = camera_names.get(camera_id, 'Unknown')
+            camera_name = camera_names.get(camera_id, 'Unknown')
+            
+            if was_processed:
                 await store_results(pool, camera_id, camera_index, timestamp, description, confidence, image_data, camera_name)
                 await send_to_django(websocket, f"{camera_name} {camera_index} {timestamp} {description}")
-                
-                self.last_processed_time[camera_id] = time.time()
-                
-                logger.info(f"Processed frame for camera {camera_id}")
+                logger.info(f"Processed new frame for camera {camera_id}")
             else:
-                logger.info(f"Skipped processing for camera {camera_id} due to insignificant changes")
+                # Update timestamp even if the image wasn't processed
+                await update_timestamp(pool, camera_id, timestamp)
+                logger.info(f"Updated timestamp for camera {camera_id} without processing new image")
+            
+            self.last_processed_time[camera_id] = time.time()
+            
+            
+            
         except Exception as e:
             logger.error(f"Error processing frame: {str(e)}")
 
@@ -70,6 +73,9 @@ async def main():
     camera_count = 0
     state_processing_interval = 60
     last_state_processing = 0
+    
+    # Schedule the checks
+    await schedule_checks()
 
     try:
         while True:
@@ -78,7 +84,6 @@ async def main():
                 frame_data = await redis.get(REDIS_FRAME_KEY.format(camera_id))
                 
                 if frame_data and (camera_index % MODULUS == INSTANCE_INDEX or (camera_index + ADDITIONAL_INDEX) % MODULUS == INSTANCE_INDEX):
-                
                     await frame_processor.process_frame(frame_data, pool, websocket)
                 
                 camera_index = (camera_index + 1) % len(CAMERA_IDS)
