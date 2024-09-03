@@ -10,3 +10,4 @@ aiocron
 pytest
 pytest-asyncio
 asyncpg
+scikit-image
