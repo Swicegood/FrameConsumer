@@ -65,11 +65,11 @@ async def process_camera_state(camera_id, aggregated_description):
         additional_state = ", door open"
         additional_definition = "'door open' means the door is open which it shoudn't be,"
     prompt = f"""Please analyze the following aggregated descriptions of a scene and determine the average state of the scene. Note "bustling" means a lot of activity right now, "festival happening" means special pageantry taking place, "crowd gathering" means people are gathering, {additional_definition} "quiet" means not much activity, "person present" means an individual is there, and "people eating" means people are consuming food.
-    Output one or more of the following states: "bustling", "festival happening", "crowd gathering", "quiet", "person present"{additional_state} or "people eating". Please output only those words and nothing else. If you cant't determine the state, output "unknown". Do not output any other words, besides the states I listed.
+    Output one or more of the following states: "bustling", "festival happening", "crowd gathering", "quiet", "person present"{additional_state} or "people eating". Please output only those words and nothing else. If you cant't determine the state, output "quiet". Do not output any other words, besides the states I listed.
 
 Aggregated Descriptions from the scene {camera_id}: {aggregated_description}. 
 Now, like you were instructed before seeing all the descriptions, give the most common state of the scene. Note "bustling" means a lot of activity right now, "festival happening" means special pageantry taking place, "crowd gathering" means people are gathering, {additional_definition} "quiet" means not much activity, "person present" means an individual is there, and "people eating" means people are consuming food.
-    Output one or more of the following states: "bustling", "festival happening", "crowd gathering", "quiet", "person present"{additional_state} or "people eating". Please output only those words and nothing else. If you cant't determine the state, output "unknown". Do not output any other words, besides the states I listed."""
+    Output one or more of the following states: "bustling", "festival happening", "crowd gathering", "quiet", "person present"{additional_state} or "people eating". Please output only those words and nothing else. If you cant't determine the state, output "quiet". Do not output any other words, besides the states I listed."""
 
     try:
         completion = await client.chat.completions.create(
