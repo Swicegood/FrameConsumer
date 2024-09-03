@@ -93,7 +93,8 @@ async def main():
     last_state_processing = 0
     
     # Schedule the checks
-    await schedule_checks()
+    if PROCESS_STATE:
+        await schedule_checks()
 
     try:
         while True:
