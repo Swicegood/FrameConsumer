@@ -1,11 +1,12 @@
 import logging
 from openai import AsyncOpenAI
-from config import OPENAI_BASE_URL, OPENAI_API_KEY, camera_names, camera_indexes
+from config import OPENAI_BASE_URL, OPENAI_API_KEY, OPENAI_VISION_URL, camera_names, camera_indexes
 
 
 logger = logging.getLogger(__name__)
 
 client = AsyncOpenAI(base_url=OPENAI_BASE_URL, api_key=OPENAI_API_KEY)
+vision_client = AsyncOpenAI(base_url=OPENAI_VISION_URL, api_key=OPENAI_API_KEY)
 
 async def process_image(base64_image):
     messages = [
@@ -28,7 +29,7 @@ async def process_image(base64_image):
     ]
 
     try:
-        completion = await client.chat.completions.create(
+        completion = await vision_client.chat.completions.create(
             model="llava",
             messages=messages,
             max_tokens=200,
@@ -97,42 +98,10 @@ async def process_camera_states(hourly_aggregated_descriptions):
         camera_states[camera_names[camera_id]+' '+str(camera_indexes[camera_id])] = state
     return camera_states
 
-async def process_image_for_curtains(base64_image):
-    messages = [
-        {
-            "role": "system",
-            "content": "You are an AI assistant tasked with analyzing images.",
-        },
-        {
-            "role": "user",
-            "content": [
-                {"type": "text", "text": "In this image do you see any Deities dressed as if for a festival? answer only yes or no. Only output yes or no, no other words"},
-                {
-                    "type": "image_url",
-                    "image_url": {
-                        "url": f"data:image/png;base64,{base64_image}"
-                    },
-                },
-            ],
-        }
-    ]
-
-    try:
-        completion = await client.chat.completions.create(
-            model="llava",
-            messages=messages,
-            max_tokens=10,
-        )
-
-        return completion.choices[0].message.content.strip().lower()
-    except Exception as e:
-        logger.error(f"LLM completion error: {str(e)}")
-        return None
-
 async def process_descriptions_for_presence(descriptions):
-    prompt = f"""Based on these descriptions is there a person or people present? answer only yes or no. Only output yes or no, no other words.
+    prompt = f"""Based on these descriptions is there a person or people present? Answer only yes or no. Only output yes or no, no other words.
 
-Descriptions: {descriptions}"""
+Descriptions: {descriptions} Based on these descriptions is there a person or people present or crowd gathering? Answer only yes or no. Only output yes or no, no other words."""
 
     try:
         completion = await client.chat.completions.create(

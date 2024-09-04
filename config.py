@@ -16,6 +16,7 @@ DB_PASSWORD = os.getenv('DB_PASSWORD', 'pgpass')
 
 # OpenAI configuration
 OPENAI_BASE_URL = os.getenv('OPENAI_BASE_URL', 'http://192.168.0.55:1234/v1')
+OPENAI_VISION_URL = os.getenv('OPENAI_VISION_URL', OPENAI_BASE_URL)
 OPENAI_API_KEY = os.getenv('OPENAI_API_KEY', 'lm-studio')
 
 # Django WebSocket URL
