@@ -70,6 +70,7 @@ class FrameProcessor:
             else:
                 # Update timestamp even if the image wasn't processed
                 await update_timestamp(pool, camera_id, timestamp)
+                await send_to_django(websocket, f"{camera_name} {camera_index} {timestamp} {description}")
                 logger.info(f"Updated timestamp for camera {camera_id} without processing new image")
             
             self.last_processed_time[camera_id] = time.time()
