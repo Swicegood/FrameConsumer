@@ -15,7 +15,7 @@ ALERT_QUEUE = 'alert_queue'
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-async def check_curtains(redis_client, db_conn, camera_id, check_time):
+async def check_curtains(redis_client, db_conn, camera_id, check_time, start_time, end_time):
     try:
         frame = await get_latest_frame_wrapper(db_conn, camera_id)
         if frame is None:
@@ -36,19 +36,12 @@ async def check_curtains(redis_client, db_conn, camera_id, check_time):
         frame_base64 = base64.b64encode(frame_bytes).decode('utf-8')
         logger.info(f"Frame data type: {type(frame)}, base64 length: {len(frame_base64)}")
 
-        results = ""
-        for i in range(5):
-            try:
-                result, confidence = await process_image(frame_base64)
-                logger.info(f"Attempt {i+1}: Result for curtains check: {result}")
-                results += result
-            except Exception as e:
-                logger.error(f"Error in process_image_for_curtains (attempt {i+1}): {str(e)}")
-
-        if not results:
-            logger.warning(f"No valid results for curtains check on camera {camera_id}")
+        descriptions = await fetch_descriptions_for_timerange(db_conn, camera_id, start_time, end_time)
+        if not descriptions:
+            logger.warning(f"No descriptions available for camera {camera_id} between {start_time} and {end_time}")
             return
-        if "deities" not in results.lower():
+        
+        if "deities" not in descriptions.lower():
             alert_data = {
                 'camera_id': camera_id,
                 'check_time': check_time,
@@ -62,10 +55,28 @@ async def check_curtains(redis_client, db_conn, camera_id, check_time):
     except Exception as e:
         logger.error(f"Error in check_curtains for camera {camera_id}: {str(e)}")
 
-
-
 async def check_presence(redis_client, db_conn, camera_id, start_time, end_time):
     try:
+        frame = await get_latest_frame_wrapper(db_conn, camera_id)
+        if frame is None:
+            logger.warning(f"No frame available for camera {camera_id} at {start_time} up to {end_time}")
+            return
+
+        # Convert frame to base64, handling different types
+        if isinstance(frame, memoryview):
+            frame_bytes = frame.tobytes()
+        elif isinstance(frame, bytes):
+            frame_bytes = frame
+        elif isinstance(frame, str):
+            frame_bytes = frame.encode('utf-8')
+        else:
+            logger.error(f"Unexpected frame type for camera {camera_id}: {type(frame)}")
+            return
+
+        frame_base64 = base64.b64encode(frame_bytes).decode('utf-8')
+        
+        logger.info(f"Frame data type: {type(frame)}, base64 length: {len(frame_base64)}")
+        
         descriptions = await fetch_descriptions_for_timerange(db_conn, camera_id, start_time, end_time)
         if not descriptions:
             logger.warning(f"No descriptions available for camera {camera_id} between {start_time} and {end_time}")
@@ -80,12 +91,11 @@ async def check_presence(redis_client, db_conn, camera_id, start_time, end_time)
         most_common = Counter(results).most_common(1)[0][0]
         
         if "no" in most_common:
-            frame = await get_latest_frame_wrapper(db_conn, camera_id)
             alert_data = {
                 'camera_id': camera_id,
                 'check_time': f"{start_time}-{end_time}",
                 'message': f"No person detected for camera {camera_id} between {start_time} and {end_time}",
-                'frame': frame.decode('utf-8') if isinstance(frame, bytes) else None
+                'frame': frame_base64
             }
             await redis_client.rpush(ALERT_QUEUE, json.dumps(alert_data))
             logger.info(f"Alert pushed to queue for camera {camera_id}: No person detected")
@@ -100,9 +110,9 @@ async def schedule_checks():
     tz = pytz.timezone('America/New_York')
 
     # AXIS_ID checks
-    aiocron.crontab('33 12 * * *', func=check_curtains, args=(redis_client, db_conn, "AXIS_ID", "12:33pm"), start=True, tz=tz)
-    aiocron.crontab('18 16 * * *', func=check_curtains, args=(redis_client, db_conn, "AXIS_ID", "4:18pm"), start=True, tz=tz)
-    aiocron.crontab('3 19 * * *', func=check_curtains, args=(redis_client, db_conn, "AXIS_ID", "7:03pm"), start=True, tz=tz)
+    aiocron.crontab('33-38 12 * * *', func=check_curtains, args=(redis_client, db_conn, "AXIS_ID", "12:33pm", time(12,33), time(12,38)), start=True, tz=tz)
+    aiocron.crontab('18-22 16 * * *', func=check_curtains, args=(redis_client, db_conn, "AXIS_ID", "4:18pm", time(16,18), time(16,22)), start=True, tz=tz)
+    aiocron.crontab('3-8 19 * * *', func=check_curtains, args=(redis_client, db_conn, "AXIS_ID", "7:03pm", time(19,3), time(19,8)), start=True, tz=tz)
 
     # sHlS7ewuGDEd2ef4 checks
     aiocron.crontab('58-59 11 * * *', func=check_presence, args=(redis_client, db_conn, "sHlS7ewuGDEd2ef4", time(11,55), time(12,0)), start=True, tz=tz)
