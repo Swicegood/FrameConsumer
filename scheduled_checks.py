@@ -41,7 +41,7 @@ async def check_curtains(redis_client, db_conn, camera_id, check_time, start_tim
             logger.warning(f"No descriptions available for camera {camera_id} between {start_time} and {end_time}")
             return
         
-        if "deities" not in descriptions.lower():
+        if not any(word in descriptions.lower() for word in ["deities", "statues", "deity", "figures"]):
             alert_data = {
                 'camera_id': camera_id,
                 'check_time': check_time,
