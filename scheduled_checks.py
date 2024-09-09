@@ -116,8 +116,8 @@ async def schedule_checks():
 
     # sHlS7ewuGDEd2ef4 checks
     aiocron.crontab('58-59 11 * * *', func=check_presence, args=(redis_client, db_conn, "sHlS7ewuGDEd2ef4", time(11,55), time(12,0)), start=True, tz=tz)
-    aiocron.crontab('55 15 * * *', func=check_presence, args=(redis_client, db_conn, "sHlS7ewuGDEd2ef4", time(15,45), time(15,55)), start=True, tz=tz)
-    aiocron.crontab('45 18 * * *', func=check_presence, args=(redis_client, db_conn, "sHlS7ewuGDEd2ef4", time(18,40), time(18,45)), start=True, tz=tz)
+    aiocron.crontab('55 15 * * 1-6', func=check_presence, args=(redis_client, db_conn, "sHlS7ewuGDEd2ef4", time(15,45), time(15,55)), start=True, tz=tz)
+    aiocron.crontab('45 18 * * 1-6', func=check_presence, args=(redis_client, db_conn, "sHlS7ewuGDEd2ef4", time(18,40), time(18,45)), start=True, tz=tz)
 
     # g8rHNVCflWO1ptKN checks
     aiocron.crontab('45-50 3 * * *', func=check_presence, args=(redis_client, db_conn, "g8rHNVCflWO1ptKN", time(3,30), time(4,0)), start=True, tz=tz)
