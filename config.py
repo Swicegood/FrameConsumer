@@ -7,7 +7,6 @@ REDIS_QUEUE = os.getenv('REDIS_QUEUE', 'frame_queue')
 REDIS_CAMERA_CHANNEL = 'camera_processing'
 REDIS_STATE_CHANNEL = 'state_processing'
 REDIS_STATE_RESULT_CHANNEL = 'state_result'
-REDIS_RAPID_QUEUE = 'rapid_frame_queue'
 
 # Database configuration
 DB_HOST = os.getenv('DB_HOST', '192.168.0.71')
