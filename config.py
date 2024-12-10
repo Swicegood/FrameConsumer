@@ -35,7 +35,7 @@ camera_names = {
     "94uZsJ2yIouIXp2x": "Greenhouse", "5SJZivf8PPsLWw2n": "Hall", "g8rHNVCflWO1ptKN": "Kitchen",
     "t3ZIWTl9jZU1JGEI": "Pavillion", "iY9STaEt7K9vS8yJ": "Prabhupada", "jlNNdFFvhQ2o2kmn": "Stage",
     "IOKAu7MMacLh79zn": "Temple", "sHlS7ewuGDEd2ef4": "Up_Pujari", "OSF13XTCKhpIkyXc": "Walk-in",
-    "jLUEC60zHGo7BXfj": "Walkway", "AXIS_ID": "Axis", "prXH5H6e9GxOij1Z": "Front Driveway"
+    "jLUEC60zHGo7BXfj": "Walkway", "AXIS_ID": "Axis", "prXH5H6e9GxOij1Z": "Front_Driveway"
 }
 
 camera_indexes = {'I6Dvhhu1azyV9rCu': 1, 'oaQllpjP0sk94nCV': 3, 'PxnDZaXu2awYbMmS': 2, 'mKlJgNx7tXwalch1': 4, 'rHWz9GRDFxrOZF7b': 5, 'LRqgKMMjjJbNEeyE': 6, '94uZsJ2yIouIXp2x': 7, '5SJZivf8PPsLWw2n': 8, 'g8rHNVCflWO1ptKN': 9, 't3ZIWTl9jZU1JGEI': 10, 'iY9STaEt7K9vS8yJ': 11, 'jlNNdFFvhQ2o2kmn': 12, 'IOKAu7MMacLh79zn': 13, 'sHlS7ewuGDEd2ef4': 14, 'OSF13XTCKhpIkyXc': 15, 'jLUEC60zHGo7BXfj': 16, 'AXIS_ID': 17, 'prXH5H6e9GxOij1Z': 18
