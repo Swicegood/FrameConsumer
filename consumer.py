@@ -111,11 +111,7 @@ async def main():
                 camera_count += 1
                 if PROCESS_STATE:
                     if camera_count >= len(camera_names):
-                        # All cameras processed, check if it's time to process state
-                        current_time = time.time()
-                        if current_time - last_state_processing >= state_processing_interval:
-                            await process_state(db_conn, redis_client)
-                            last_state_processing = current_time
+                        await process_state(db_conn, redis_client)
                         camera_count = 0
                 state_request = await redis.blpop(REDIS_STATE_CHANNEL, timeout=1)
                 if state_request:
