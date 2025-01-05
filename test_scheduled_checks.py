@@ -58,7 +58,7 @@ async def test_check_presence(redis_client):
         args = redis_client.rpush.call_args[0]
         assert args[0] == 'alert_queue'
         alert_data = json.loads(args[1])
-        assert 'No person detected' in alert_data['message']
+        assert 'No single person detected' in alert_data['message']
 
 @pytest.mark.asyncio
 async def test_schedule_checks(redis_client):

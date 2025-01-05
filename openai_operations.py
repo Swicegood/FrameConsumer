@@ -41,7 +41,7 @@ async def process_image(base64_image):
         return None, None
 
 async def process_facility_state(all_recent_descriptions):
-    prompt = f"""Please analyze the following most recent descriptions from all cameras in the facility and determine the overall current state of the facility. Note "bustling" means a lot of activity right now, "festival happening" means special pageantry taking place, "crowd gathering" means people are gathering, "over capacity" means the building can not accomodate so many people,   "quiet" means not much activity, "person present" means an individual is there, and "people eating" means people are consuming food. Output only one of the following states: "bustling", "festival happening", "crowd gathering", "over capacity", "quiet", "person present" or "people eating". Please output only those words and nothing else.
+    prompt = f"""Please analyze the following most recent descriptions from all cameras in the facility and determine the overall current state of the facility. Note "bustling" means a lot of activity right now, "big religious festival" means special pageantry taking place, "religious or spiritual gathering" means people are gathering, "over capacity" means the building can not accomodate so many people,   "nothing" means not significant activity, "single person present" means an individual is there, and "people eating" means people are consuming food. Output only one of the following states: "bustling", "big religious festival", "religious or spiritual gathering", "over capacity", "nothing", "single person present" or "people eating". Please output only those words and nothing else.
 
 Most Recent Descriptions from all cameras: {all_recent_descriptions}"""
 
@@ -65,12 +65,12 @@ async def process_camera_state(camera_id, aggregated_description):
     if camera_id in ["oaQllpjP0sk94nCV", "OSF13XTCKhpIkyXc"]:
         additional_state = ", door open"
         additional_definition = "'door open' means the door is open which it shoudn't be,"
-    prompt = f"""Please analyze the following aggregated descriptions of a scene and determine the average state of the scene. Note "bustling" means a lot of activity right now, "festival happening" means special pageantry taking place, "crowd gathering" means people are gathering, {additional_definition} "quiet" means not much activity, "person present" means an individual is there, and "people eating" means people are consuming food.
-    Output one or more of the following states: "bustling", "festival happening", "crowd gathering", "quiet", "person present"{additional_state} or "people eating". Please output only those words and nothing else. If you cant't determine the state, output "quiet". Do not output any other words, besides the states I listed.
+    prompt = f"""Please analyze the following aggregated descriptions of a scene and determine the average state of the scene. Note "bustling" means a lot of activity right now, "big religious festival" means special pageantry taking place, "religious or spiritual gathering" means people are gathering, {additional_definition} "nothin" means no significant activity, "single person present" means an individual is there, and "people eating" means people are consuming food.
+    Output one or more of the following states: "bustling", "big religious festival", "religious or spiritual gathering", "nothing", "single person present"{additional_state} or "people eating". Please output only those words and nothing else. If you cant't determine the state, output "nothing". Do not output any other words, besides the states I listed.
 
 Aggregated Descriptions from the scene {camera_id}: {aggregated_description}. 
-Now, like you were instructed before seeing all the descriptions, give the most common state of the scene. Note "bustling" means a lot of activity right now, "festival happening" means special pageantry taking place, "crowd gathering" means people are gathering, {additional_definition} "quiet" means not much activity, "person present" means an individual is there, and "people eating" means people are consuming food.
-    Output one or more of the following states: "bustling", "festival happening", "crowd gathering", "quiet", "person present"{additional_state} or "people eating". Please output only those words and nothing else. If you cant't determine the state, output "quiet". Do not output any other words, besides the states I listed."""
+Now, like you were instructed before seeing all the descriptions, give the most common state of the scene. Note "bustling" means a lot of activity right now, "big religious festival" means special pageantry taking place, "religious or spiritual gathering" means people are gathering, {additional_definition} "nothing" means no significant activity, "single person present" means an individual is there, and "people eating" means people are consuming food.
+    Output one or more of the following states: "bustling", "big religious festival", "religious or spiritual gathering", "nothing", "single person present"{additional_state} or "people eating". Please output only those words and nothing else. If you cant't determine the state, output "nothing". Do not output any other words, besides the states I listed."""
 
     try:
         completion = await client.chat.completions.create(
@@ -99,9 +99,9 @@ async def process_camera_states(hourly_aggregated_descriptions):
     return camera_states
 
 async def process_descriptions_for_presence(descriptions):
-    prompt = f"""Based on these descriptions is there a person or people present? Answer only yes or no. Only output yes or no, no other words.
+    prompt = f"""Based on these descriptions is there a single person or people present? Answer only yes or no. Only output yes or no, no other words.
 
-Descriptions: {descriptions} Based on these descriptions is there a person or people present or crowd gathering? Answer only yes or no. Only output yes or no, no other words."""
+Descriptions: {descriptions} Based on these descriptions is there a single person or people present or religious or spiritual gathering? Answer only yes or no. Only output yes or no, no other words."""
 
     try:
         completion = await client.chat.completions.create(
