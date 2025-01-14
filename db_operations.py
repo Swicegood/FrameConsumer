@@ -103,6 +103,20 @@ async def fetch_hourly_aggregated_descriptions(conn):
     """)
     return dict(cur.fetchall())
 
+async def fetch_aggregated_descriptions(conn):
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT camera_id, STRING_AGG(description, ' ') as descriptions
+        FROM visionmon_metadata
+        WHERE (camera_id, timestamp) IN (
+            SELECT camera_id, MAX(timestamp)
+            FROM visionmon_metadata
+            GROUP BY camera_id
+        )
+        GROUP BY camera_id
+    """)
+    return dict(cur.fetchall())
+
 async def fetch_descriptions_for_timerange(conn, camera_id, start_time, end_time):
     cur = conn.cursor()
     

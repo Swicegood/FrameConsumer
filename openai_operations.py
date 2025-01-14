@@ -65,7 +65,7 @@ async def process_camera_state(camera_id, aggregated_description):
     if camera_id in ["oaQllpjP0sk94nCV", "OSF13XTCKhpIkyXc"]:
         additional_state = ", door open"
         additional_definition = "'door open' means the door is open which it shoudn't be,"
-    prompt = f"""Please analyze the following aggregated descriptions of a scene and determine the average state of the scene. Note "bustling" means a lot of activity right now, "big religious festival" means special pageantry taking place, "religious or spiritual gathering" means people are gathering, {additional_definition} "nothin" means no significant activity, "single person present" means an individual is there, and "people eating" means people are consuming food.
+    prompt = f"""Please analyze the following aggregated descriptions of a scene and determine the average state of the scene. Note "bustling" means a lot of activity right now, "big religious festival" means special pageantry taking place, "religious or spiritual gathering" means people are gathering, {additional_definition} "nothing" means no significant activity, "single person present" means an individual is there, and "people eating" means people are consuming food.
     Output one or more of the following states: "bustling", "big religious festival", "religious or spiritual gathering", "nothing", "single person present"{additional_state} or "people eating". Please output only those words and nothing else. If you cant't determine the state, output "nothing". Do not output any other words, besides the states I listed.
 
 Aggregated Descriptions from the scene {camera_id}: {aggregated_description}. 

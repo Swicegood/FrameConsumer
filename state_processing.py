@@ -1,7 +1,7 @@
 import json
 import logging
 from openai_operations import process_facility_state, process_camera_states
-from db_operations import fetch_latest_descriptions, fetch_hourly_aggregated_descriptions
+from db_operations import fetch_latest_descriptions, fetch_hourly_aggregated_descriptions, fetch_aggregated_descriptions
 from redis_operations import publish_state_result
 import pytz
 from datetime import datetime
@@ -32,14 +32,14 @@ async def process_state(db_conn, redis_client):
         latest_descriptions = await fetch_latest_descriptions(db_conn)
         
         # Fetch aggregated descriptions from last hour for each camera (for camera states)
-        hourly_aggregated_descriptions = await fetch_hourly_aggregated_descriptions(db_conn)
+        aggregated_descriptions = await fetch_aggregated_descriptions(db_conn)
         
         # Process overall facility state
         all_recent_descriptions = " ".join(latest_descriptions.values())
         facility_state = await process_facility_state(all_recent_descriptions)
         
         # Process individual camera states
-        camera_states = await process_camera_states(hourly_aggregated_descriptions)
+        camera_states = await process_camera_states(aggregated_descriptions)
         
         # Send results to Redis for Django to pick up
         state_result = json.dumps({
