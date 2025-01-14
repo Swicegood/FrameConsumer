@@ -65,12 +65,25 @@ async def process_camera_state(camera_id, aggregated_description):
     if camera_id in ["oaQllpjP0sk94nCV", "OSF13XTCKhpIkyXc"]:
         additional_state = ", door open"
         additional_definition = "'door open' means the door is open which it shoudn't be,"
-    prompt = f"""Please analyze the following aggregated descriptions of a scene and determine the average state of the scene. Note "bustling" means a lot of activity right now, "big religious festival" means special pageantry taking place, "religious or spiritual gathering" means people are gathering, {additional_definition} "nothing" means no significant activity, "single person present" means an individual is there, and "people eating" means people are consuming food.
-    Output one or more of the following states: "bustling", "big religious festival", "religious or spiritual gathering", "nothing", "single person present"{additional_state} or "people eating". Please output only those words and nothing else. If you cant't determine the state, output "nothing". Do not output any other words, besides the states I listed.
+    prompt = f"""Please analyze the following description of a scene and determine the average state of activity based strictly on the number of people explicitly present. Use the following guidelines:
+•	“Bustling”: There is a lot of activity right now (many people and high energy).
+•	“Big religious festival”: A special event or pageantry with clear evidence of festival-like activities.
+•	“Religious or spiritual gathering”: Multiple people are explicitly gathering for a spiritual or religious purpose.
+•	“Nothing”: There is no significant activity, and no people are observed.
+•	“Single person present”: Exactly one person is present in the scene.
+•	“People eating”: Explicit mention of people consuming food.
+{additional_state}: {additional_definition}
+<data start>
 
-Aggregated Descriptions from the scene {camera_id}: {aggregated_description}. 
-Now, like you were instructed before seeing all the descriptions, give the most common state of the scene. Note "bustling" means a lot of activity right now, "big religious festival" means special pageantry taking place, "religious or spiritual gathering" means people are gathering, {additional_definition} "nothing" means no significant activity, "single person present" means an individual is there, and "people eating" means people are consuming food.
-    Output one or more of the following states: "bustling", "big religious festival", "religious or spiritual gathering", "nothing", "single person present"{additional_state} or "people eating". Please output only those words and nothing else. If you cant't determine the state, output "nothing". Do not output any other words, besides the states I listed."""
+ {camera_id}: {aggregated_description}. 
+<data end>
+Rules:
+•	Base your determination strictly on the description. Do not infer or assume activity beyond what is stated.
+•	If the description mentions exactly one person, output “single person present”, regardless of the context.
+•	If the description does not clearly describe multiple people or activity, output “nothing”.
+•	Only output one or more of the predefined states: “bustling”, “big religious festival”, “religious or spiritual gathering”, “nothing”, “single person present”, “people eating”.
+
+Output: one or more of the predefined states only. If you cannot determine a state, output “nothing”. Do not output any other text."""
 
     try:
         completion = await client.chat.completions.create(
