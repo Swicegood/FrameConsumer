@@ -1,6 +1,8 @@
 import logging
 from openai import AsyncOpenAI
 from config import OPENAI_BASE_URL, OPENAI_API_KEY, OPENAI_VISION_URL, camera_names, camera_indexes
+from datetime import datetime
+import pytz
 
 
 logger = logging.getLogger(__name__)
@@ -60,11 +62,48 @@ Most Recent Descriptions from all cameras: {all_recent_descriptions}"""
         return f"Error processing facility state: {str(e)}"
 
 async def process_camera_state(camera_id, aggregated_description):
+    from datetime import datetime
+    import pytz
+    from state_processing import time_zone_str
+
+    # First check if this is the AXIS camera and if we're in specific time windows
+    if camera_id == "AXIS_ID":
+        # Get current time in the specified timezone
+        tz = pytz.timezone(time_zone_str)
+        current_time = datetime.now(tz)
+        hour = current_time.hour
+        minute = current_time.minute
+        weekday = current_time.weekday()  # 0-6 (Monday-Sunday)
+        
+        # Convert current time to minutes since midnight for easier comparison
+        current_minutes = hour * 60 + minute
+        
+        # Define time windows (in minutes since midnight)
+        time_windows = [
+            (4*60 + 30, 5*60),      # 4:30 AM - 5:00 AM
+            (7*60 + 15, 12*60),     # 7:15 AM - 12:00 PM
+            (12*60 + 30, 13*60),    # 12:30 PM - 1:00 PM
+            (19*60, 20*60),         # 7:00 PM - 8:00 PM
+        ]
+        
+        # Add the weekday-specific windows
+        if weekday < 6:  # Monday-Saturday
+            time_windows.append((16*60 + 15, 17*60 + 45))  # 4:15 PM - 5:45 PM
+        else:  # Sunday
+            time_windows.append((16*60, 16*60 + 30))       # 4:00 PM - 4:30 PM
+            
+        # Check if current time falls within any of the windows
+        for start, end in time_windows:
+            if start <= current_minutes <= end:
+                return "nothing"
+
+    # Continue with the existing logic for other cases
     additional_state = ""
     additional_definition = ""
     if camera_id in ["oaQllpjP0sk94nCV", "OSF13XTCKhpIkyXc"]:
         additional_state = ", door open"
         additional_definition = "'door open' means the door is open which it shoudn't be,"
+    
     prompt = f"""Please analyze the following description of a scene and determine the average state of activity based strictly on the number of people explicitly present. Use the following guidelines:
 •	“Bustling”: There is a lot of activity right now (many people and high energy).
 •	“Big religious festival”: A special event or pageantry with clear evidence of festival-like activities.
