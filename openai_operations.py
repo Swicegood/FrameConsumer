@@ -87,6 +87,8 @@ async def process_camera_state(camera_id, aggregated_description):
         ]
         
         # Add the weekday-specific windows
+        if weekday > 5:  # Saturday-Sunday
+            time_windows.append((13*60, 16*60))  # 1:00 PM - 4:00 PM
         if weekday < 6:  # Monday-Saturday
             time_windows.append((16*60 + 15, 17*60 + 45))  # 4:15 PM - 5:45 PM
         else:  # Sunday
