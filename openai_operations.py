@@ -100,11 +100,9 @@ async def process_camera_state(camera_id, aggregated_description):
                 return "nothing"
 
     # Continue with the existing logic for other cases
+    # Note: Removed door open check for Bhoga_Shed and Walk-in cameras (no longer in active camera list)
     additional_state = ""
     additional_definition = ""
-    if camera_id in ["oaQllpjP0sk94nCV", "OSF13XTCKhpIkyXc"]:
-        additional_state = ", door open"
-        additional_definition = "'door open' means the door is open which it shoudn't be,"
     
     prompt = f"""Please analyze the following description of a scene and determine the average state of activity based strictly on the number of people explicitly present. Use the following guidelines:
 •	“Bustling”: There is a lot of activity right now (many people and high energy).

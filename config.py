@@ -28,36 +28,38 @@ MODULUS = int(os.getenv('MODULUS', "1"))
 INSTANCE_INDEX = int(os.getenv('INSTANCE_INDEX', "0"))
 ADDITIONAL_INDEX = int(os.getenv('ADDITIONAL_INDEX', "2"))
 
-# Camera information
+# Camera information - reduced to 8 cameras for faster processing
 camera_names = {
-    "I6Dvhhu1azyV9rCu": "Audio_Visual", "oaQllpjP0sk94nCV": "Bhoga_Shed", "PxnDZaXu2awYbMmS": "Back_Driveway",
-    "mKlJgNx7tXwalch1": "Deck_Stairs", "rHWz9GRDFxrOZF7b": "Down_Pujari", "LRqgKMMjjJbNEeyE": "Field",
-    "94uZsJ2yIouIXp2x": "Greenhouse", "5SJZivf8PPsLWw2n": "Hall", "g8rHNVCflWO1ptKN": "Kitchen",
-    "t3ZIWTl9jZU1JGEI": "Pavillion", "iY9STaEt7K9vS8yJ": "Prabhupada", "jlNNdFFvhQ2o2kmn": "Stage",
-    "IOKAu7MMacLh79zn": "Temple", "sHlS7ewuGDEd2ef4": "Up_Pujari", "OSF13XTCKhpIkyXc": "Walk-in",
-    "jLUEC60zHGo7BXfj": "Walkway", "AXIS_ID": "Axis", "prXH5H6e9GxOij1Z": "Front_Driveway"
+    "rHWz9GRDFxrOZF7b": "Down_Pujari",
+    "5SJZivf8PPsLWw2n": "Hall",
+    "g8rHNVCflWO1ptKN": "Kitchen",
+    "iY9STaEt7K9vS8yJ": "Prabhupada",
+    "IOKAu7MMacLh79zn": "Temple",
+    "sHlS7ewuGDEd2ef4": "Up_Pujari",
+    "AXIS_ID": "Axis",
+    "prXH5H6e9GxOij1Z": "Front_Driveway"
 }
 
-camera_indexes = {'I6Dvhhu1azyV9rCu': 1, 'oaQllpjP0sk94nCV': 3, 'PxnDZaXu2awYbMmS': 2, 'mKlJgNx7tXwalch1': 4, 'rHWz9GRDFxrOZF7b': 5, 'LRqgKMMjjJbNEeyE': 6, '94uZsJ2yIouIXp2x': 7, '5SJZivf8PPsLWw2n': 8, 'g8rHNVCflWO1ptKN': 9, 't3ZIWTl9jZU1JGEI': 10, 'iY9STaEt7K9vS8yJ': 11, 'jlNNdFFvhQ2o2kmn': 12, 'IOKAu7MMacLh79zn': 13, 'sHlS7ewuGDEd2ef4': 14, 'OSF13XTCKhpIkyXc': 15, 'jLUEC60zHGo7BXfj': 16, 'AXIS_ID': 17, 'prXH5H6e9GxOij1Z': 18
-                  }
+camera_indexes = {
+    'rHWz9GRDFxrOZF7b': 1,  # Down_Pujari
+    '5SJZivf8PPsLWw2n': 2,  # Hall
+    'g8rHNVCflWO1ptKN': 3,  # Kitchen
+    'iY9STaEt7K9vS8yJ': 4,  # Prabhupada
+    'IOKAu7MMacLh79zn': 5,  # Temple
+    'sHlS7ewuGDEd2ef4': 6,  # Up_Pujari
+    'AXIS_ID': 7,           # Axis
+    'prXH5H6e9GxOij1Z': 8   # Front_Driveway
+}
 
 CAMERA_IDS = list(camera_indexes.keys())
 
 camera_descriptions = {
-    "Audio_Visual": "A server room/AV/alter prep area typically used for getting alter itmes and adjusting volume or equipment.",
-    "Bhoga_Shed": "Food pantry for the deities, will rarely be occupied by anyone other than pujaris or kitchen staff.",
-    "Back_Driveway": "The driveway behind the temple, typically used for deliveries or parking.",
-    "Deck_Stairs": "The stairs leading to the deck, typically used by pujaris or visitors to access the temple.",
     "Down_Pujari": "The area downstairs where pujaris prepare dresses for the deiteis, typically only occupied by pujaris.",
-    "Field": "The field behind the temple, typically used for outdoor events or gatherings. May be occupied by visitors or devotees.",
-    "Greenhouse": "Soley for growing sacred Tulasi plants, typically only occupied by pujaris or gardeners.",
     "Hall": "Dining and event hall, typically used for prasadam distribution, classes, or gatherings. May be occupied by visitors or devotees.",
     "Kitchen": "The temple kitchen, typically used for cooking prasadam or preparing food. May be occupied by kitchen staff or pujaris.",
-    "Pavillion": "The pavillion area, typically used for outdoor events or gatherings. May be occupied by visitors or devotees.",
     "Prabhupada": "The main hall of the temple, typically used for kirtans, classes, or gatherings. May be occupied by visitors or devotees. There is a statue of Srila Prabhupada in this area.",
-    "Stage": "The stage area, typically used for performances, kirtans, or classes, and prasadam distribution. May be occupied by visitors or devotees.",
     "Temple": "The main hall of the temple, typically used for kirtans, classes, or gatherings. May be occupied by visitors or devotees.",
     "Up_Pujari": "The upstairs area where pujaris prepare dresses for the deities, typically only occupied by pujaris.",
-    "Walk-in": "Cold storage area on backside of the temple for perishable items, typically only occupied by kitchen staff or pujaris.",
-    "Walkway": "The walkway leading to the temple, typically used by visitors or devotees."
+    "Axis": "Camera monitoring specific area with deity viewing.",
+    "Front_Driveway": "The driveway in front of the temple, typically used for arrivals, departures, or parking."
 }
